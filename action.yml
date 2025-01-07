@@ -4,23 +4,13 @@ author: "OxyFoo"
 
 inputs:
   author:
-    description: "Author of the project"
-    type: choice
-    options:
-      - "oxyfoo"
-      - "gerem"
-      - "pierre"
+    description: "Author of the project (lowercase)"
     required: true
   project-name:
-    description: "Name of the project"
+    description: "Name of the project (lowercase)"
     required: true
   environment:
-    description: "Environment to deploy"
-    type: choice
-    options:
-      - "Development"
-      - "Staging"
-      - "Production"
+    description: "Environment to deploy (Development, Staging, Production)"
     required: true
   docker-compose-file:
     description: "Docker compose file (default: docker-compose.yml)"
