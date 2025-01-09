@@ -38,13 +38,8 @@ on:
 env:
   PROJECT_NAME: ${{ github.event.repository.name }}
   ENVIRONMENT_MIN: ${{ inputs.environment == 'Production' && 'prod' || inputs.environment == 'Staging' && 'stag' || 'dev' }}
-
   PROJECT_PATH: "/srv/OxyCloud/Projects/${{ inputs.environment }}"
   SERVICE_PATH: "/srv/OxyCloud/Services"
-
-  REMOTE_USER: ${{ secrets.VPS2_USER }}
-  REMOTE_HOST: ${{ secrets.VPS2_HOST }}
-  SSH_PRIVATE_KEY: ${{ secrets.VPS2_SSH_PRIVATE_KEY }}
   DOCKER_COMPOSE_FILE: ${{ inputs.docker-compose-file || 'docker-compose.yml' }}
 
 jobs:
@@ -53,14 +48,14 @@ jobs:
     steps:
       - name: Debug Secrets
         run: |
-          echo "SSH_PRIVATE_KEY: ${{ secrets.VPS2_SSH_PRIVATE_KEY }}"
           echo "REMOTE_USER: ${{ secrets.VPS2_USER }}"
           echo "REMOTE_HOST: ${{ secrets.VPS2_HOST }}"
 
       - name: Define environment variables
         run: |
+          echo "PROJECT_NAME_MIN=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
           echo "SERVICE_NAME=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT_MIN }}.service' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
-  
+
       - name: Download Configuration Artifact
         uses: actions/download-artifact@v4
         with:
@@ -75,25 +70,23 @@ jobs:
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
-          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          echo "${{ secrets.VPS2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H $REMOTE_HOST >> ~/.ssh/known_hosts
+          ssh-keyscan -H ${{ secrets.VPS2_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Check docker-compose file on server
+      - name: Check docker-compose file locally
         run: |
-          ls -lash
-
           echo "Checking docker-compose file: ${{ env.DOCKER_COMPOSE_FILE }}"
-          if [ ! -f ${{ env.DOCKER_COMPOSE_FILE }} ]; then
-            echo 'Docker compose file not found'
+          if [ ! -f "./${{ env.DOCKER_COMPOSE_FILE }}" ]; then
+            echo "Docker compose file not found locally"
             exit 1
           fi
 
       - name: Stop service if exists
         run: |
-          ssh $REMOTE_USER@$REMOTE_HOST "
-            if systemctl list-units --full -all | grep -Fq $SERVICE_NAME; then
-              sudo systemctl stop $SERVICE_NAME || true
+          ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+            if systemctl list-units --full -all | grep -Fq ${SERVICE_NAME}; then
+              sudo systemctl stop ${SERVICE_NAME} || true
             else
               echo 'Service does not exist, skipping stop.'
             fi
@@ -101,8 +94,9 @@ jobs:
 
       - name: Upload project to server
         run: |
-          PROJECT_NAME_MIN=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}' | tr '[:upper:]' '[:lower:]')
-          rsync -ravz --no-perms --no-owner --no-group --delete --exclude='.git' --exclude='.github' --exclude='node_modules' ./ $REMOTE_USER@$REMOTE_HOST:${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+          rsync -ravz --no-perms --no-owner --no-group --delete \
+            --exclude='.git' --exclude='.github' --exclude='node_modules' ./ \
+            ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }}:${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
 
       - name: Create and start systemd service
         env:
@@ -116,20 +110,20 @@ jobs:
             Type=oneshot
             RemainAfterExit=yes
             User=${{ secrets.VPS2_USER }}
-            WorkingDirectory=${{ env.PROJECT_PATH }}/${{ inputs.author }}-${{ env.PROJECT_NAME }}
+            WorkingDirectory=${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
             ExecStart=/usr/bin/docker compose -f ${{ env.DOCKER_COMPOSE_FILE }} up -d --build
             ExecStop=/usr/bin/docker compose -f ${{ env.DOCKER_COMPOSE_FILE }} down
 
             [Install]
             WantedBy=multi-user.target
         run: |
-          ssh $REMOTE_USER@$REMOTE_HOST "
-            echo \"$SYSTEMD_SERVICE\" | tee ${{ env.SERVICE_PATH }}/$SERVICE_NAME > /dev/null
+          ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+            printf \"$SYSTEMD_SERVICE\" > ${{ env.SERVICE_PATH }}/${SERVICE_NAME}
           "
 
       - name: Update services and run project
         run: |
-          ssh $REMOTE_USER@$REMOTE_HOST "
+          ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             sudo oxy -u
-            sudo systemctl start $SERVICE_NAME
+            sudo systemctl start ${SERVICE_NAME}
           "
