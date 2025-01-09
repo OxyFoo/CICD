@@ -59,8 +59,7 @@ jobs:
 
       - name: Define environment variables
         run: |
-          echo "PROJECT_NAME_MIN=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
-          echo "SERVICE_NAME=$(echo '$PROJECT_NAME_MIN-$ENVIRONMENT_MIN' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "SERVICE_NAME=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}-$ENVIRONMENT_MIN' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
   
       - name: Download Configuration Artifact
         uses: actions/download-artifact@v4
@@ -102,7 +101,8 @@ jobs:
 
       - name: Upload project to server
         run: |
-          rsync -ravz --no-perms --no-owner --no-group --delete --exclude='.git' --exclude='.github' --exclude='node_modules' ./ $REMOTE_USER@$REMOTE_HOST:${{ env.PROJECT_PATH }}/${{ inputs.author }}-$PROJECT_NAME_MIN
+          PROJECT_NAME_MIN=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}' | tr '[:upper:]' '[:lower:]')
+          rsync -ravz --no-perms --no-owner --no-group --delete --exclude='.git' --exclude='.github' --exclude='node_modules' ./ $REMOTE_USER@$REMOTE_HOST:${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
 
       - name: Create and start systemd service
         env:
