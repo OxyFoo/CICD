@@ -40,17 +40,16 @@ on:
         required: true
 
 env:
+  PROJECT_NAME: ${{ github.event.repository.name }}
   ENVIRONMENT_MIN: ${{ inputs.environment == 'Production' && 'prod' || inputs.environment == 'Staging' && 'stag' || 'dev' }}
+
+  PROJECT_PATH: "/srv/OxyCloud/Projects/${{ inputs.environment }}"
+  SERVICE_PATH: "/srv/OxyCloud/Services"
+
   REMOTE_USER: ${{ secrets.VPS2_USER }}
   REMOTE_HOST: ${{ secrets.VPS2_HOST }}
   SSH_PRIVATE_KEY: ${{ secrets.VPS2_SSH_PRIVATE_KEY }}
   DOCKER_COMPOSE_FILE: ${{ inputs.docker-compose-file || 'docker-compose.yml' }}
-
-  PROJECT_PATH: "/srv/OxyCloud/Projects/${{ inputs.environment }}"
-  PROJECT_NAME: ${{ inputs.project-name }}
-
-  SERVICE_PATH: "/srv/OxyCloud/Services/"
-  SERVICE_NAME: ${{ inputs.author }}-${{ inputs.project-name }}-$ENVIRONMENT_MIN.service
 
 jobs:
   deploy:
@@ -62,6 +61,11 @@ jobs:
           echo "REMOTE_USER: ${{ secrets.VPS2_USER }}"
           echo "REMOTE_HOST: ${{ secrets.VPS2_HOST }}"
 
+      - name: Define environment variables
+        run: |
+          echo "PROJECT_NAME_MIN=$(echo '${{ inputs.author }}-${{ inputs.project-name }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "SERVICE_NAME=$(echo '$PROJECT_NAME_MIN-$ENVIRONMENT_MIN' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+  
       - name: Download Configuration Artifact
         uses: actions/download-artifact@v4
         with:
@@ -93,8 +97,8 @@ jobs:
       - name: Stop service if exists
         run: |
           ssh $REMOTE_USER@$REMOTE_HOST "
-            if systemctl list-units --full -all | grep -Fq ${{ env.SERVICE_NAME }}; then
-              sudo systemctl stop ${{ env.SERVICE_NAME }} || true
+            if systemctl list-units --full -all | grep -Fq $SERVICE_NAME; then
+              sudo systemctl stop SERVICE_NAME || true
             else
               echo 'Service does not exist, skipping stop.'
             fi
@@ -108,7 +112,7 @@ jobs:
         env:
           SYSTEMD_SERVICE: |
             [Unit]
-            Description=${{ inputs.author }} - ${{ inputs.environment }} - ${{ inputs.project-name }}
+            Description=${{ inputs.author }} - ${{ inputs.environment }} - ${{ env.PROJECT_NAME }}
             Requires=${{ inputs.docker-requires || 'docker.service' }}
             After=${{ inputs.docker-requires || 'docker.service' }}
 
@@ -116,7 +120,7 @@ jobs:
             Type=oneshot
             RemainAfterExit=yes
             User=${{ secrets.VPS2_USER }}
-            WorkingDirectory=/srv/OxyCloud/Projects/${{ inputs.environment }}/${{ inputs.project-name }}
+            WorkingDirectory=${{ env.PROJECT_PATH }}/${{ inputs.project-name }}
             ExecStart=/usr/bin/docker compose -f ${{ env.DOCKER_COMPOSE_FILE }} up -d --build
             ExecStop=/usr/bin/docker compose -f ${{ env.DOCKER_COMPOSE_FILE }} down
 
@@ -124,12 +128,12 @@ jobs:
             WantedBy=multi-user.target
         run: |
           ssh $REMOTE_USER@$REMOTE_HOST "
-            echo \"$SYSTEMD_SERVICE\" | tee ${{ env.SERVICE_PATH }}/${{ env.SERVICE_NAME }} > /dev/null
+            echo \"$SYSTEMD_SERVICE\" | tee ${{ env.SERVICE_PATH }}/$SERVICE_NAME > /dev/null
           "
 
       - name: Update services and run project
         run: |
           ssh $REMOTE_USER@$REMOTE_HOST "
             sudo oxy -u
-            sudo systemctl start ${{ env.SERVICE_NAME }}
+            sudo systemctl start $SERVICE_NAME
           "
