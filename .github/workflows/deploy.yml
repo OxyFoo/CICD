@@ -47,7 +47,7 @@ env:
   DOCKER_COMPOSE_FILE: ${{ inputs.docker-compose-file || 'docker-compose.yml' }}
 
   PROJECT_PATH: "/srv/OxyCloud/Projects/${{ inputs.environment }}"
-  PROJECT_NAME: ${{ github.event.repository.name }}
+  PROJECT_NAME: ${{ inputs.project-name }}
 
   SERVICE_PATH: "/srv/OxyCloud/Services/"
   SERVICE_NAME: ${{ inputs.author }}-${{ inputs.project-name }}-$ENVIRONMENT_MIN.service
