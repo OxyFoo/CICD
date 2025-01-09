@@ -93,8 +93,8 @@ jobs:
       - name: Stop service if exists
         run: |
           ssh $REMOTE_USER@$REMOTE_HOST "
-            if systemctl list-units --full -all | grep -Fq $SERVICE_NAME; then
-              sudo systemctl stop SERVICE_NAME || true
+            if systemctl list-units --full -all | grep -Fq ${{ github.env.SERVICE_NAME }}; then
+              sudo systemctl stop ${{ github.env.SERVICE_NAME }} || true
             else
               echo 'Service does not exist, skipping stop.'
             fi
@@ -102,7 +102,7 @@ jobs:
 
       - name: Upload project to server
         run: |
-          rsync -ravz --no-perms --no-owner --no-group --delete --exclude='.git' --exclude='.github' --exclude='node_modules' ./ $REMOTE_USER@$REMOTE_HOST:$PROJECT_PATH/$PROJECT_NAME
+          rsync -ravz --no-perms --no-owner --no-group --delete --exclude='.git' --exclude='.github' --exclude='node_modules' ./ $REMOTE_USER@$REMOTE_HOST:${{ env.PROJECT_PATH }}/${{ inputs.author }}-${{ env.PROJECT_NAME }}
 
       - name: Create and start systemd service
         env:
@@ -116,7 +116,7 @@ jobs:
             Type=oneshot
             RemainAfterExit=yes
             User=${{ secrets.VPS2_USER }}
-            WorkingDirectory=${{ env.PROJECT_PATH }}/${{ env.PROJECT_NAME }}
+            WorkingDirectory=${{ env.PROJECT_PATH }}/${{ inputs.author }}-${{ env.PROJECT_NAME }}
             ExecStart=/usr/bin/docker compose -f ${{ env.DOCKER_COMPOSE_FILE }} up -d --build
             ExecStop=/usr/bin/docker compose -f ${{ env.DOCKER_COMPOSE_FILE }} down
 
@@ -124,12 +124,12 @@ jobs:
             WantedBy=multi-user.target
         run: |
           ssh $REMOTE_USER@$REMOTE_HOST "
-            echo \"$SYSTEMD_SERVICE\" | tee ${{ env.SERVICE_PATH }}/$SERVICE_NAME > /dev/null
+            echo \"$SYSTEMD_SERVICE\" | tee ${{ env.SERVICE_PATH }}/${{ github.env.SERVICE_NAME }} > /dev/null
           "
 
       - name: Update services and run project
         run: |
           ssh $REMOTE_USER@$REMOTE_HOST "
             sudo oxy -u
-            sudo systemctl start $SERVICE_NAME
+            sudo systemctl start ${{ github.env.SERVICE_NAME }}
           "
