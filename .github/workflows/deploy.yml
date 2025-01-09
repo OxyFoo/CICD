@@ -110,13 +110,17 @@ jobs:
             Type=oneshot
             RemainAfterExit=yes
             User=${{ secrets.VPS2_USER }}
-            WorkingDirectory=${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+            WorkingDirectory=${{ env.PROJECT_PATH }}/PROJECT_NAME_MIN
             ExecStart=/usr/bin/docker compose -f ${{ env.DOCKER_COMPOSE_FILE }} up -d --build
             ExecStop=/usr/bin/docker compose -f ${{ env.DOCKER_COMPOSE_FILE }} down
 
             [Install]
             WantedBy=multi-user.target
         run: |
+          # Replace placeholders in systemd service
+          SYSTEMD_SERVICE=$(echo "$SYSTEMD_SERVICE" | sed "s/PROJECT_NAME_MIN/$PROJECT_NAME_MIN/g")
+
+          # Send systemd service to server
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             printf \"$SYSTEMD_SERVICE\" > ${{ env.SERVICE_PATH }}/${SERVICE_NAME}
           "
