@@ -12,10 +12,6 @@ on:
         description: "Author of the project (lowercase)"
         required: true
         type: string
-      project-name:
-        description: "Name of the project (lowercase)"
-        required: true
-        type: string
       environment:
         description: "Environment to deploy (Development, Staging, Production)"
         required: true
@@ -63,7 +59,7 @@ jobs:
 
       - name: Define environment variables
         run: |
-          echo "PROJECT_NAME_MIN=$(echo '${{ inputs.author }}-${{ inputs.project-name }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "PROJECT_NAME_MIN=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
           echo "SERVICE_NAME=$(echo '$PROJECT_NAME_MIN-$ENVIRONMENT_MIN' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
   
       - name: Download Configuration Artifact
@@ -120,7 +116,7 @@ jobs:
             Type=oneshot
             RemainAfterExit=yes
             User=${{ secrets.VPS2_USER }}
-            WorkingDirectory=${{ env.PROJECT_PATH }}/${{ inputs.project-name }}
+            WorkingDirectory=${{ env.PROJECT_PATH }}/${{ env.PROJECT_NAME }}
             ExecStart=/usr/bin/docker compose -f ${{ env.DOCKER_COMPOSE_FILE }} up -d --build
             ExecStop=/usr/bin/docker compose -f ${{ env.DOCKER_COMPOSE_FILE }} down
 
