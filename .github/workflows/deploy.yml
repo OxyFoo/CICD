@@ -16,6 +16,10 @@ on:
         description: "Environment to deploy (Development, Staging, Production)"
         required: true
         type: string
+      artifact-name:
+        description: "Artifact name to download"
+        required: false
+        type: string
       docker-compose-file:
         description: "Docker compose file (default: docker-compose.yml)"
         required: false
@@ -59,7 +63,7 @@ jobs:
       - name: Download Configuration Artifact
         uses: actions/download-artifact@v4
         with:
-          name: project-package
+          name: ${{ inputs.artifact-name || 'project-package' }}
           path: .
 
       - name: Debug Config Files
