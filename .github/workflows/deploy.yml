@@ -1,0 +1,136 @@
+name: OxyFoo Deploy
+
+permissions:
+  contents: read
+  actions: write
+  packages: write
+
+on:
+  workflow_call:
+    inputs:
+      author:
+        description: "Author of the project (lowercase)"
+        required: true
+        type: string
+      project-name:
+        description: "Name of the project (lowercase)"
+        required: true
+        type: string
+      environment:
+        description: "Environment to deploy (Development, Staging, Production)"
+        required: true
+        type: string
+      docker-compose-file:
+        description: "Docker compose file (default: docker-compose.yml)"
+        required: false
+        type: string
+      docker-requires:
+        description: "Docker requires before run (default: docker.service)"
+        required: false
+        type: string
+    secrets:
+      VPS2_SSH_PRIVATE_KEY:
+        description: "SSH private key for server"
+        required: true
+      VPS2_USER:
+        description: "User for server"
+        required: true
+      VPS2_HOST:
+        description: "Host for server"
+        required: true
+
+env:
+  ENVIRONMENT_MIN: ${{ inputs.environment == 'Production' && 'prod' || inputs.environment == 'Staging' && 'stag' || 'dev' }}
+  REMOTE_USER: ${{ secrets.VPS2_USER }}
+  REMOTE_HOST: ${{ secrets.VPS2_HOST }}
+  SSH_PRIVATE_KEY: ${{ secrets.VPS2_SSH_PRIVATE_KEY }}
+  DOCKER_COMPOSE_FILE: ${{ inputs.docker-compose-file || 'docker-compose.yml' }}
+
+  PROJECT_PATH: "/srv/OxyCloud/Projects/${{ inputs.environment }}"
+  PROJECT_NAME: ${{ github.event.repository.name }}
+
+  SERVICE_PATH: "/srv/OxyCloud/Services/"
+  SERVICE_NAME: ${{ inputs.author }}-${{ inputs.project-name }}-$ENVIRONMENT_MIN.service
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Debug Secrets
+        run: |
+          echo "SSH_PRIVATE_KEY: ${{ secrets.VPS2_SSH_PRIVATE_KEY }}"
+          echo "REMOTE_USER: ${{ secrets.VPS2_USER }}"
+          echo "REMOTE_HOST: ${{ secrets.VPS2_HOST }}"
+
+      - name: Download Configuration Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: project-package
+          path: .
+
+      - name: Debug Config Files
+        run: |
+          echo "Contents of downloaded config:"
+          ls -lash
+          cat .env
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H $REMOTE_HOST >> ~/.ssh/known_hosts
+
+      - name: Check docker-compose file on server
+        run: |
+          ls -lash
+
+          echo "Checking docker-compose file: ${{ env.DOCKER_COMPOSE_FILE }}"
+          if [ ! -f ${{ env.DOCKER_COMPOSE_FILE }} ]; then
+            echo 'Docker compose file not found'
+            exit 1
+          fi
+
+      - name: Stop service if exists
+        run: |
+          ssh $REMOTE_USER@$REMOTE_HOST "
+            if systemctl list-units --full -all | grep -Fq ${{ env.SERVICE_NAME }}; then
+              sudo systemctl stop ${{ env.SERVICE_NAME }} || true
+            else
+              echo 'Service does not exist, skipping stop.'
+            fi
+          "
+
+      - name: Upload project to server
+        run: |
+          rsync -ravz --no-perms --no-owner --no-group --delete --exclude='.git' --exclude='.github' --exclude='node_modules' ./ $REMOTE_USER@$REMOTE_HOST:$PROJECT_PATH/$PROJECT_NAME
+
+      - name: Create and start systemd service
+        env:
+          SYSTEMD_SERVICE: |
+            [Unit]
+            Description=${{ inputs.author }} - ${{ inputs.environment }} - ${{ inputs.project-name }}
+            Requires=${{ inputs.docker-requires || 'docker.service' }}
+            After=${{ inputs.docker-requires || 'docker.service' }}
+
+            [Service]
+            Type=oneshot
+            RemainAfterExit=yes
+            User=${{ secrets.VPS2_USER }}
+            WorkingDirectory=/srv/OxyCloud/Projects/${{ inputs.environment }}/${{ inputs.project-name }}
+            ExecStart=/usr/bin/docker compose -f ${{ env.DOCKER_COMPOSE_FILE }} up -d --build
+            ExecStop=/usr/bin/docker compose -f ${{ env.DOCKER_COMPOSE_FILE }} down
+
+            [Install]
+            WantedBy=multi-user.target
+        run: |
+          ssh $REMOTE_USER@$REMOTE_HOST "
+            echo \"$SYSTEMD_SERVICE\" | tee ${{ env.SERVICE_PATH }}/${{ env.SERVICE_NAME }} > /dev/null
+          "
+
+      - name: Update services and run project
+        run: |
+          ssh $REMOTE_USER@$REMOTE_HOST "
+            sudo oxy -u
+            sudo systemctl start ${{ env.SERVICE_NAME }}
+          "
