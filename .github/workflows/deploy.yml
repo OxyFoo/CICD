@@ -59,7 +59,7 @@ jobs:
 
       - name: Define environment variables
         run: |
-          echo "SERVICE_NAME=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}-$ENVIRONMENT_MIN' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "SERVICE_NAME=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT_MIN }}.service' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
   
       - name: Download Configuration Artifact
         uses: actions/download-artifact@v4
