@@ -72,7 +72,6 @@ jobs:
         run: |
           echo "Contents of downloaded config:"
           ls -lash
-          cat .env
 
       - name: Setup SSH
         run: |
