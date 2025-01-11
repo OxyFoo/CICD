@@ -56,6 +56,13 @@ jobs:
           echo "SERVICE_NAME=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT_MIN }}.service' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
           echo "PROJECT_BACKUP=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}.bak' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.VPS2_HOST }} >> ~/.ssh/known_hosts
+
       - name: Temporary backup of project
         run: |
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
@@ -74,13 +81,6 @@ jobs:
         run: |
           echo "Contents of downloaded config:"
           ls -lash
-
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VPS2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.VPS2_HOST }} >> ~/.ssh/known_hosts
 
       - name: Check docker-compose file locally
         run: |
