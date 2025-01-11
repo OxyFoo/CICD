@@ -110,6 +110,7 @@ jobs:
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             if systemctl list-units --full -all | grep -Fq ${SERVICE_NAME}; then
               sudo systemctl stop ${SERVICE_NAME} || true
+              echo 'Service stopped.'
             else
               echo 'Service does not exist, skipping stop.'
             fi
@@ -197,9 +198,23 @@ jobs:
               # Restore backup
               mv ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
 
+              # Update service
+              sudo oxy -u
+              sleep 5
+
               # Start service if exists
               if systemctl list-units --full -all | grep -Fq ${SERVICE_NAME}; then
+                echo 'Starting service...'
                 sudo systemctl start ${SERVICE_NAME}
+
+                if ! systemctl is-active --quiet ${SERVICE_NAME}; then
+                  echo 'Service failed to start, exiting.'
+                  exit 1
+                else
+                  echo 'Service started.'
+                fi
+              else
+                echo 'Service does not exist, skipping start.'
               fi
 
               # Notify
