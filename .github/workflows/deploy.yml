@@ -205,7 +205,7 @@ jobs:
               # Start service if exists
               if systemctl list-units --full -all | grep -Fq ${SERVICE_NAME}; then
                 echo 'Starting service...'
-                sudo systemctl start ${SERVICE_NAME}
+                sudo systemctl restart ${SERVICE_NAME}
 
                 if ! systemctl is-active --quiet ${SERVICE_NAME}; then
                   echo 'Service failed to start, exiting.'
