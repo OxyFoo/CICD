@@ -67,7 +67,7 @@ jobs:
         run: |
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             if [ -d ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN ]; then
-              sudo mv ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP
+              mv ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP
             fi
           "
 
@@ -144,7 +144,7 @@ jobs:
         run: |
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             if [ -d ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP ]; then
-              sudo rm -rf ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP
+              rm -rf ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP
             fi
           "
 
@@ -158,10 +158,10 @@ jobs:
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             if [ -d ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP ]; then
               # Remove failed project
-              sudo rm -rf ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+              rm -rf ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
 
               # Restore backup
-              sudo mv ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+              mv ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
 
               # Start service if exists
               if systemctl list-units --full -all | grep -Fq ${SERVICE_NAME}; then
