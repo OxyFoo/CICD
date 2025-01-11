@@ -162,6 +162,11 @@ jobs:
               echo 'Service failed to start, exiting.'
               exit 1
             fi
+
+            if ! docker ps --filter name=${PROJECT_FULL_NAME} --format '{{.Names}}' | grep -Fq ${PROJECT_FULL_NAME}; then
+              echo 'Container failed to start, exiting.'
+              exit 1
+            fi
           "
 
       - name: Cleanup remote backup
