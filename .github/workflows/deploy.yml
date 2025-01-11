@@ -50,15 +50,19 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Debug Secrets
-        run: |
-          echo "REMOTE_USER: ${{ secrets.VPS2_USER }}"
-          echo "REMOTE_HOST: ${{ secrets.VPS2_HOST }}"
-
       - name: Define environment variables
         run: |
           echo "PROJECT_NAME_MIN=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
           echo "SERVICE_NAME=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT_MIN }}.service' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "PROJECT_BACKUP=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}.bak' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Temporary backup of project
+        run: |
+          ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+            if [ -d ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN ]; then
+              sudo mv ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP
+            fi
+          "
 
       - name: Download Configuration Artifact
         uses: actions/download-artifact@v4
@@ -134,4 +138,37 @@ jobs:
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             sudo oxy -u
             sudo systemctl start ${SERVICE_NAME}
+          "
+
+      - name: Cleanup remote backup
+        run: |
+          ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+            if [ -d ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP ]; then
+              sudo rm -rf ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP
+            fi
+          "
+
+      - name: Cleanup local files
+        run: |
+          rm -rf ./*
+
+      - name: Restore project if failed
+        if: failure()
+        run: |
+          ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+            if [ -d ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP ]; then
+              # Remove failed project
+              sudo rm -rf ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+
+              # Restore backup
+              sudo mv ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+
+              # Start service if exists
+              if systemctl list-units --full -all | grep -Fq ${SERVICE_NAME}; then
+                sudo systemctl start ${SERVICE_NAME}
+              fi
+
+              # Notify
+              echo 'Project restored from backup.'
+            fi
           "
