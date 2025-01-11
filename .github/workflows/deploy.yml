@@ -53,6 +53,7 @@ jobs:
       - name: Define environment variables
         run: |
           echo "PROJECT_NAME_MIN=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "PROJECT_FULL_NAME=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT_MIN }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
           echo "SERVICE_NAME=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT_MIN }}.service' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
           echo "PROJECT_BACKUP=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}.bak' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
@@ -90,6 +91,20 @@ jobs:
             exit 1
           fi
 
+          echo "Checking container name"
+          if ! grep -q 'container_name' "./${{ env.DOCKER_COMPOSE_FILE }}"; then
+            echo "Container name not found in docker-compose file"
+            exit 1
+          fi
+
+          CONTAINER_NAME=$(grep 'container_name' "./${{ env.DOCKER_COMPOSE_FILE }}" | awk '{print $2}' | tr -d '"')
+          echo "Container name: $CONTAINER_NAME"
+          if [ -z "$CONTAINER_NAME" ] || [ "$CONTAINER_NAME" != "$PROJECT_FULL_NAME" ]; then
+            echo "Container name not defined or different of project name"
+            echo "Please define container_name in docker-compose file as '$PROJECT_FULL_NAME'"
+            exit 1
+          fi
+
       - name: Stop service if exists
         run: |
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
@@ -106,7 +121,7 @@ jobs:
             --exclude='.git' --exclude='.github' --exclude='node_modules' ./ \
             ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }}:${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
 
-      - name: Create and start systemd service
+      - name: Create systemd service
         env:
           SYSTEMD_SERVICE: |
             [Unit]
@@ -138,6 +153,15 @@ jobs:
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             sudo oxy -u
             sudo systemctl start ${SERVICE_NAME}
+          "
+
+      - name: Check service status
+        run: |
+          ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+            if ! systemctl is-active --quiet ${SERVICE_NAME}; then
+              echo 'Service failed to start, exiting.'
+              exit 1
+            fi
           "
 
       - name: Cleanup remote backup
