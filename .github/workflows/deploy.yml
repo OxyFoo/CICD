@@ -158,11 +158,16 @@ jobs:
       - name: Check service status
         run: |
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+            # Wait for service to start
+            sleep 10
+
+            # Check if service is active
             if ! systemctl is-active --quiet ${SERVICE_NAME}; then
               echo 'Service failed to start, exiting.'
               exit 1
             fi
 
+            # Check if container is running
             if ! docker ps --filter name=${PROJECT_FULL_NAME} --format '{{.Names}}' | grep -Fq ${PROJECT_FULL_NAME}; then
               echo 'Container failed to start, exiting.'
               exit 1
