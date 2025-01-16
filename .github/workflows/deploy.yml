@@ -175,12 +175,14 @@ jobs:
             fi
           "
 
-      - name: Cleanup remote backup
+      - name: Cleanup remote backup & .gitkeep
         run: |
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             if [ -d ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP ]; then
               rm -rf ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP
             fi
+
+            find ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN -name '.gitkeep' -delete
           "
 
       - name: Cleanup local files
