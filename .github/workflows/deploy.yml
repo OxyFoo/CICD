@@ -108,11 +108,20 @@ jobs:
       - name: Stop service if exists
         run: |
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+            # Stop service if exists
             if systemctl list-units --full -all | grep -Fq ${SERVICE_NAME}; then
               sudo systemctl stop ${SERVICE_NAME} || true
               echo 'Service stopped.'
             else
               echo 'Service does not exist, skipping stop.'
+            fi
+
+            # Stop container if exists
+            if docker ps --filter name=${PROJECT_FULL_NAME} --format '{{.Names}}' | grep -Fq ${PROJECT_FULL_NAME}; then
+              docker stop ${PROJECT_FULL_NAME} || true
+              echo 'Container stopped.'
+            else
+              echo 'Container does not exist, skipping stop.'
             fi
           "
 
