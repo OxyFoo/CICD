@@ -29,15 +29,15 @@ on:
         required: false
         type: string
       run-on-success:
-        description: "Remote command to run on success, after deployment"
+        description: "Remote command to run on success, after deployment (all quotes and environment variables needed to be escaped)"
         required: false
         type: string
       run-on-failure:
-        description: "Remote command to run on failure, after deployment"
+        description: "Remote command to run on failure, after deployment (all quotes and environment variables needed to be escaped)"
         required: false
         type: string
       run-on-setup:
-        description: "Remote command to run after setup and before deployment"
+        description: "Remote command to run after setup and before deployment (all quotes and environment variables needed to be escaped)"
         required: false
         type: string
     secrets:
