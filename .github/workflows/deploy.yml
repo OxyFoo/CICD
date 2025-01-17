@@ -29,15 +29,15 @@ on:
         required: false
         type: string
       run-on-success:
-        description: "Command to run on success, after deployment"
+        description: "Remote command to run on success, after deployment"
         required: false
         type: string
       run-on-failure:
-        description: "Command to run on failure, after deployment"
+        description: "Remote command to run on failure, after deployment"
         required: false
         type: string
       run-on-setup:
-        description: "Command to run after setup and before deployment"
+        description: "Remote command to run after setup and before deployment"
         required: false
         type: string
     secrets:
@@ -117,11 +117,6 @@ jobs:
             exit 1
           fi
 
-      - name: Run before deployment
-        if: inputs.run-on-setup
-        run: |
-          ${{ inputs.run-on-setup }}
-
       - name: Stop service if exists
         run: |
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
@@ -147,6 +142,14 @@ jobs:
           rsync -ravz --no-perms --no-owner --no-group --delete \
             --exclude='.git' --exclude='.github' --exclude='node_modules' ./ \
             ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }}:${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+
+      - name: Run before deployment
+        if: inputs.run-on-setup
+        run: |
+          ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+            cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+            ${{ inputs.run-on-setup }}
+          "
 
       - name: Create systemd service
         env:
@@ -254,6 +257,7 @@ jobs:
         if: success() && inputs.run-on-success
         run: |
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+            cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
             ${{ inputs.run-on-success }}
           "
 
@@ -261,5 +265,6 @@ jobs:
         if: failure() && inputs.run-on-failure
         run: |
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+            cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
             ${{ inputs.run-on-failure }}
           "
