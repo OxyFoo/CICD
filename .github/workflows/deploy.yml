@@ -28,6 +28,18 @@ on:
         description: "Docker requires before run (default: docker.service)"
         required: false
         type: string
+      run-on-success:
+        description: "Command to run on success, after deployment"
+        required: false
+        type: string
+      run-on-failure:
+        description: "Command to run on failure, after deployment"
+        required: false
+        type: string
+      run-on-setup:
+        description: "Command to run after setup and before deployment"
+        required: false
+        type: string
     secrets:
       VPS2_SSH_PRIVATE_KEY:
         description: "SSH private key for server"
@@ -104,6 +116,11 @@ jobs:
             echo "Please define container_name in docker-compose file as '$PROJECT_FULL_NAME'"
             exit 1
           fi
+
+      - name: Run before deployment
+        if: inputs.run-on-setup
+        run: |
+          ${{ inputs.run-on-setup }}
 
       - name: Stop service if exists
         run: |
@@ -231,4 +248,18 @@ jobs:
               # Notify
               echo 'Project restored from backup.'
             fi
+          "
+
+      - name: Run on success
+        if: success() && inputs.run-on-success
+        run: |
+          ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+            ${{ inputs.run-on-success }}
+          "
+
+      - name: Run on failure
+        if: failure() && inputs.run-on-failure
+        run: |
+          ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+            ${{ inputs.run-on-failure }}
           "
