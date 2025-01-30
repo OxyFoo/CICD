@@ -13,11 +13,19 @@ on:
         required: true
         type: string
       environment:
-        description: "Environment to deploy (Development, Staging, Production)"
+        description: "Environment to deploy (Development, Staging, Production, WebStatic)"
         required: true
         type: string
       artifact-name:
         description: "Artifact name to download"
+        required: false
+        type: string
+      web-static-domain:
+        description: "Web static domain"
+        required: false
+        type: string
+      web-static-path:
+        description: "Web static path"
         required: false
         type: string
       docker-compose-file:
@@ -55,6 +63,7 @@ env:
   PROJECT_NAME: ${{ github.event.repository.name }}
   ENVIRONMENT_MIN: ${{ inputs.environment == 'Production' && 'prod' || inputs.environment == 'Staging' && 'stag' || 'dev' }}
   PROJECT_PATH: "/srv/OxyCloud/Projects/${{ inputs.environment }}"
+  STATIC_WEB_PATH: "/srv/OxyCloud/WebServer/domains/${{ inputs.web-static-domain }}/public_html/${{ inputs.web-static-path }}"
   SERVICE_PATH: "/srv/OxyCloud/Services"
   DOCKER_COMPOSE_FILE: ${{ inputs.docker-compose-file || 'docker-compose.yml' }}
 
@@ -78,6 +87,11 @@ jobs:
 
       - name: Temporary backup of project
         run: |
+          if [ "${{ inputs.environment }}" == "WebStatic" ]; then
+            echo "Backup with static website is not supported, skipping backup."
+            exit 0
+          fi
+
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             if [ -d ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN ]; then
               mv ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP
@@ -96,6 +110,7 @@ jobs:
           ls -lash
 
       - name: Check docker-compose file locally
+        if: inputs.environment != 'WebStatic'
         run: |
           echo "Checking docker-compose file: ${{ env.DOCKER_COMPOSE_FILE }}"
           if [ ! -f "./${{ env.DOCKER_COMPOSE_FILE }}" ]; then
@@ -118,6 +133,7 @@ jobs:
           fi
 
       - name: Stop service if exists
+        if: inputs.environment != 'WebStatic'
         run: |
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             # Stop service if exists
@@ -138,10 +154,18 @@ jobs:
           "
 
       - name: Upload project to server
+        if: inputs.environment != 'WebStatic'
         run: |
           rsync -ravz --no-perms --no-owner --no-group --delete \
             --exclude='.git' --exclude='.github' --exclude='node_modules' ./ \
             ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }}:${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+
+      - name: Upload static website to server
+        if: inputs.environment == 'WebStatic'
+        run: |
+          rsync -ravz --no-perms --no-owner --no-group --delete \
+            --exclude='.git' --exclude='.github' --exclude='node_modules' ./ \
+            ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }}:${{ env.STATIC_WEB_PATH }}
 
       - name: Run before deployment
         if: inputs.run-on-setup
@@ -152,6 +176,7 @@ jobs:
           "
 
       - name: Create systemd service
+        if: inputs.environment != 'WebStatic'
         env:
           SYSTEMD_SERVICE: |
             [Unit]
@@ -179,6 +204,7 @@ jobs:
           "
 
       - name: Update services and run project
+        if: inputs.environment != 'WebStatic'
         run: |
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             sudo oxy -u
@@ -186,6 +212,7 @@ jobs:
           "
 
       - name: Check service status
+        if: inputs.environment != 'WebStatic'
         run: |
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             # Wait for service to start
@@ -205,6 +232,7 @@ jobs:
           "
 
       - name: Cleanup remote backup & .gitkeep
+        if: inputs.environment != 'WebStatic'
         run: |
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             if [ -d ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP ]; then
@@ -219,7 +247,7 @@ jobs:
           rm -rf ./*
 
       - name: Restore project if failed
-        if: failure()
+        if: failure() && inputs.environment != 'WebStatic'
         run: |
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             if [ -d ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP ]; then
