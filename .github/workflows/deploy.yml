@@ -109,9 +109,9 @@ jobs:
             exit 1
           fi
 
-          CONTAINER_NAME=$(grep 'container_name' "./${{ env.DOCKER_COMPOSE_FILE }}" | awk '{print $2}' | tr -d '"')
-          echo "Container name: $CONTAINER_NAME"
-          if [ -z "$CONTAINER_NAME" ] || [ "$CONTAINER_NAME" != "$PROJECT_FULL_NAME" ]; then
+          CONTAINER_NAMES=$(grep 'container_name' "./${{ env.DOCKER_COMPOSE_FILE }}" | awk '{print $2}' | tr -d '"')
+          echo "Container name: $CONTAINER_NAMES"
+            if [ -z "$CONTAINER_NAMES" ] || [[ "$CONTAINER_NAMES" != *"$PROJECT_FULL_NAME"* ]]; then
             echo "Container name not defined or different of project name"
             echo "Please define container_name in docker-compose file as '$PROJECT_FULL_NAME'"
             exit 1
