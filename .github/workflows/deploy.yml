@@ -13,7 +13,13 @@ on:
         required: true
         type: string
       environment:
-        description: "Environment to deploy (Development, Staging, Production, WebStatic)"
+        description: |
+          Environment to deploy:
+          - `Development` - with docker compose
+          - `Staging` - with docker compose
+          - `Production` - with docker compose
+          - `WebStatic` - directly upload to web server
+          - `Temporary` - deleted after run
         required: true
         type: string
       artifact-name:
@@ -61,11 +67,13 @@ on:
 
 env:
   PROJECT_NAME: ${{ github.event.repository.name }}
-  ENVIRONMENT_MIN: ${{ inputs.environment == 'Production' && 'prod' || inputs.environment == 'Staging' && 'stag' || 'dev' }}
   PROJECT_PATH: "/srv/OxyCloud/Projects/${{ inputs.environment }}"
+  PROJECT_TYPE: ${{ inputs.environment == 'WebStatic' && 'web-static' || inputs.environment == 'Temporary' && 'temporary' || 'docker' }}
+  ENVIRONMENT_MIN: ${{ inputs.environment == 'Production' && 'prod' || inputs.environment == 'Staging' && 'stag' || 'dev' }}
   STATIC_WEB_PATH: "/srv/OxyCloud/WebServer/domains/${{ inputs.web-static-domain }}/public_html/${{ inputs.web-static-path }}"
   SERVICE_PATH: "/srv/OxyCloud/Services"
   DOCKER_COMPOSE_FILE: ${{ inputs.docker-compose-file || 'docker-compose.yml' }}
+  TEMPORARY_PATH: "/srv/OxyCloud/Projects/Temporary/${{ github.run_id }}"
 
 jobs:
   deploy:
@@ -86,12 +94,17 @@ jobs:
           ssh-keyscan -H ${{ secrets.VPS2_HOST }} >> ~/.ssh/known_hosts
 
       - name: Temporary backup of project
+        if: env.PROJECT_TYPE != 'temporary'
         run: |
-          if [ "${{ inputs.environment }}" == "WebStatic" ]; then
+          echo "Backing up project..."
+
+          # Web static backup
+          if [ "${{ env.PROJECT_TYPE }}" == "web-static" ]; then
             echo "Backup with static website is not supported, skipping backup."
             exit 0
           fi
 
+          # Docker backup
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             if [ -d ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN ]; then
               mv ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP
@@ -110,7 +123,7 @@ jobs:
           ls -lash
 
       - name: Check docker-compose file locally
-        if: inputs.environment != 'WebStatic'
+        if: env.PROJECT_TYPE == 'docker'
         run: |
           echo "Checking docker-compose file: ${{ env.DOCKER_COMPOSE_FILE }}"
           if [ ! -f "./${{ env.DOCKER_COMPOSE_FILE }}" ]; then
@@ -133,7 +146,7 @@ jobs:
           fi
 
       - name: Stop service if exists
-        if: inputs.environment != 'WebStatic'
+        if: env.PROJECT_TYPE == 'docker'
         run: |
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             # Stop service if exists
@@ -154,18 +167,43 @@ jobs:
           "
 
       - name: Upload project to server
-        if: inputs.environment != 'WebStatic'
+        if: env.PROJECT_TYPE == 'docker'
         run: |
+          # Create project directory
+          ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+            mkdir -p ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+          "
+
+          # Upload project to server
           rsync -ravz --no-perms --no-owner --no-group --delete \
             --exclude='.git' --exclude='.github' --exclude='node_modules' ./ \
             ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }}:${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
 
       - name: Upload static website to server
-        if: inputs.environment == 'WebStatic'
+        if: env.PROJECT_TYPE == 'web-static'
         run: |
+          # Create static web directory
+          ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+            mkdir -p ${{ env.STATIC_WEB_PATH }}
+          "
+
+          # Upload project to static web directory
           rsync -ravz --no-perms --no-owner --no-group --delete \
             --exclude='.git' --exclude='.github' --exclude='node_modules' ./ \
             ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }}:${{ env.STATIC_WEB_PATH }}
+
+      - name: Upload temporary project to server
+        if: env.PROJECT_TYPE == 'temporary'
+        run: |
+          # Create temporary directory
+          ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+            mkdir -p ${{ env.TEMPORARY_PATH }}
+          "
+
+          # Upload project to temporary directory
+          rsync -ravz --no-perms --no-owner --no-group --delete \
+            --exclude='.git' --exclude='.github' --exclude='node_modules' ./ \
+            ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }}:${{ env.TEMPORARY_PATH }}
 
       - name: Run before deployment
         if: inputs.run-on-setup
@@ -176,7 +214,7 @@ jobs:
           "
 
       - name: Create systemd service
-        if: inputs.environment != 'WebStatic'
+        if: env.PROJECT_TYPE == 'docker'
         env:
           SYSTEMD_SERVICE: |
             [Unit]
@@ -204,7 +242,7 @@ jobs:
           "
 
       - name: Update services and run project
-        if: inputs.environment != 'WebStatic'
+        if: env.PROJECT_TYPE == 'docker'
         run: |
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             sudo oxy -u
@@ -212,7 +250,7 @@ jobs:
           "
 
       - name: Check service status
-        if: inputs.environment != 'WebStatic'
+        if: env.PROJECT_TYPE == 'docker'
         run: |
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             # Wait for service to start
@@ -232,7 +270,7 @@ jobs:
           "
 
       - name: Cleanup remote backup & .gitkeep
-        if: inputs.environment != 'WebStatic'
+        if: env.PROJECT_TYPE == 'docker'
         run: |
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             if [ -d ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP ]; then
@@ -242,12 +280,19 @@ jobs:
             find ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN -name '.gitkeep' -delete
           "
 
+      - name: Cleanup temporary project
+        if: env.PROJECT_TYPE == 'temporary'
+        run: |
+          ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+            rm -rf ${{ env.TEMPORARY_PATH }}
+          "
+
       - name: Cleanup local files
         run: |
           rm -rf ./*
 
       - name: Restore project if failed
-        if: failure() && inputs.environment != 'WebStatic'
+        if: failure() && env.PROJECT_TYPE == 'docker'
         run: |
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             if [ -d ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP ]; then
