@@ -208,10 +208,23 @@ jobs:
       - name: Run before deployment
         if: inputs.run-on-setup
         run: |
-          ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
-            cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
-            ${{ inputs.run-on-setup }}
-          "
+          # Run before deployment - temporary project
+          if [ "${{ env.PROJECT_TYPE }}" == "temporary" ]; then
+            echo "Running before deployment command..."
+            ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+              cd ${{ env.TEMPORARY_PATH }}
+              ${{ inputs.run-on-setup }}
+            "
+          fi
+
+          # Run before deployment - web static or docker project
+          if [ "${{ env.PROJECT_TYPE }}" == "web-static" ] || [ "${{ env.PROJECT_TYPE }}" == "docker" ]; then
+            echo "Running before deployment command..."
+            ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+              cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+              ${{ inputs.run-on-setup }}
+            "
+          fi
 
       - name: Create systemd service
         if: env.PROJECT_TYPE == 'docker'
@@ -329,15 +342,41 @@ jobs:
       - name: Run on success
         if: success() && inputs.run-on-success
         run: |
-          ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
-            cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
-            ${{ inputs.run-on-success }}
-          "
+          # Run on success - temporary project
+          if [ "${{ env.PROJECT_TYPE }}" == "temporary" ]; then
+            echo "Running on success command..."
+            ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+              cd ${{ env.TEMPORARY_PATH }}
+              ${{ inputs.run-on-success }}
+            "
+          fi
+
+          # Run on success - web static or docker project
+          if [ "${{ env.PROJECT_TYPE }}" == "web-static" ] || [ "${{ env.PROJECT_TYPE }}" == "docker" ]; then
+            echo "Running on success command..."
+            ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+              cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+              ${{ inputs.run-on-success }}
+            "
+          fi
 
       - name: Run on failure
         if: failure() && inputs.run-on-failure
         run: |
-          ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
-            cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
-            ${{ inputs.run-on-failure }}
-          "
+          # Run on failure - temporary project
+          if [ "${{ env.PROJECT_TYPE }}" == "temporary" ]; then
+            echo "Running on failure command..."
+            ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+              cd ${{ env.TEMPORARY_PATH }}
+              ${{ inputs.run-on-failure }}
+            "
+          fi
+
+          # Run on failure - web static or docker project
+          if [ "${{ env.PROJECT_TYPE }}" == "web-static" ] || [ "${{ env.PROJECT_TYPE }}" == "docker" ]; then
+            echo "Running on failure command..."
+            ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+              cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+              ${{ inputs.run-on-failure }}
+            "
+          fi
