@@ -42,6 +42,11 @@ on:
         description: "Docker requires before run (default: docker.service)"
         required: false
         type: string
+      exclude-folders:
+        description: "Folders to exclude during upload (default: .git,.github,node_modules). Use \"\" to disable all excludes."
+        required: false
+        type: string
+        default: ".git,.github,node_modules"
       run-on-success:
         description: "Remote command to run on success, after deployment (all quotes and environment variables needed to be escaped)"
         required: false
@@ -174,9 +179,15 @@ jobs:
             mkdir -p ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
           "
 
+          # Generate exclude arguments
+          EXCLUDE_ARGS=""
+          if [ ! -z "${{ inputs.exclude-folders }}" ]; then
+            EXCLUDE_ARGS=$(echo "${{ inputs.exclude-folders }}" | tr ',' '\n' | sed 's/^/--exclude=/' | tr '\n' ' ')
+          fi
+
           # Upload project to server
           rsync -ravz --no-perms --no-owner --no-group --delete \
-            --exclude='.git' --exclude='.github' --exclude='node_modules' ./ \
+            $EXCLUDE_ARGS ./ \
             ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }}:${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
 
       - name: Upload static website to server
@@ -187,9 +198,15 @@ jobs:
             mkdir -p ${{ env.STATIC_WEB_PATH }}
           "
 
+          # Generate exclude arguments
+          EXCLUDE_ARGS=""
+          if [ ! -z "${{ inputs.exclude-folders }}" ]; then
+            EXCLUDE_ARGS=$(echo "${{ inputs.exclude-folders }}" | tr ',' '\n' | sed 's/^/--exclude=/' | tr '\n' ' ')
+          fi
+
           # Upload project to static web directory
           rsync -ravz --no-perms --no-owner --no-group --delete \
-            --exclude='.git' --exclude='.github' --exclude='node_modules' ./ \
+            $EXCLUDE_ARGS ./ \
             ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }}:${{ env.STATIC_WEB_PATH }}
 
       - name: Upload temporary project to server
@@ -200,9 +217,15 @@ jobs:
             mkdir -p ${{ env.TEMPORARY_PATH }}
           "
 
+          # Generate exclude arguments
+          EXCLUDE_ARGS=""
+          if [ ! -z "${{ inputs.exclude-folders }}" ]; then
+            EXCLUDE_ARGS=$(echo "${{ inputs.exclude-folders }}" | tr ',' '\n' | sed 's/^/--exclude=/' | tr '\n' ' ')
+          fi
+
           # Upload project to temporary directory
           rsync -ravz --no-perms --no-owner --no-group --delete \
-            --exclude='.git' --exclude='.github' --exclude='node_modules' ./ \
+            $EXCLUDE_ARGS ./ \
             ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }}:${{ env.TEMPORARY_PATH }}
 
       - name: Run before deployment
