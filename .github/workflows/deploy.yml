@@ -259,11 +259,11 @@ jobs:
             After=${{ inputs.docker-requires || 'docker.service' }}
 
             [Service]
-            Type=oneshot
+            Type=simple
             RemainAfterExit=yes
             User=${{ secrets.VPS2_USER }}
             WorkingDirectory=${{ env.PROJECT_PATH }}/PROJECT_NAME_MIN
-            ExecStart=/usr/bin/docker compose -f ${{ env.DOCKER_COMPOSE_FILE }} up -d --build
+            ExecStart=/usr/bin/docker compose -f ${{ env.DOCKER_COMPOSE_FILE }} up --build
             ExecStop=/usr/bin/docker compose -f ${{ env.DOCKER_COMPOSE_FILE }} down
 
             [Install]
