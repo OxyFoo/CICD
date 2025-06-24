@@ -59,6 +59,11 @@ on:
         description: "Remote command to run after setup and before deployment (all quotes and environment variables needed to be escaped)"
         required: false
         type: string
+      restore-on-failure:
+        description: "Automatically restore Docker project from backup if deployment fails (default: true)"
+        required: false
+        type: boolean
+        default: true
     secrets:
       VPS2_SSH_PRIVATE_KEY:
         description: "SSH private key for server"
@@ -328,7 +333,7 @@ jobs:
           rm -rf ./*
 
       - name: Restore project if failed
-        if: failure() && env.PROJECT_TYPE == 'docker'
+        if: failure() && env.PROJECT_TYPE == 'docker' && inputs.restore-on-failure
         run: |
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             if [ -d ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP ]; then
