@@ -294,20 +294,40 @@ jobs:
         if: env.PROJECT_TYPE == 'docker'
         run: |
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
-            # Wait for service to start
-            sleep 10
+            # Wait for service to start with timeout (2 minutes max)
+            echo 'Waiting for service to start...'
+            TIMEOUT=120  # 2 minutes
+            CHECK_INTERVAL=10
 
-            # Check if service is active
-            if ! systemctl is-active --quiet ${SERVICE_NAME}; then
-              echo 'Service failed to start, exiting.'
-              exit 1
-            fi
+            ELAPSED=0
+            while [ \$ELAPSED -lt \$TIMEOUT ]; do
+              echo \"Checking service status... (\$ELAPSED/\$TIMEOUT seconds)\"
 
-            # Check if container is running
-            if ! docker ps --filter name=${PROJECT_FULL_NAME} --format '{{.Names}}' | grep -Fq ${PROJECT_FULL_NAME}; then
-              echo 'Container failed to start, exiting.'
-              exit 1
-            fi
+              # Check if service is active
+              if systemctl is-active --quiet ${SERVICE_NAME}; then
+                echo 'Service is active, checking container...'
+
+                # Check if container is running
+                if docker ps --filter name=${PROJECT_FULL_NAME} --format '{{.Names}}' | grep -Fq ${PROJECT_FULL_NAME}; then
+                  echo 'Service and container are running successfully!'
+                  exit 0
+                else
+                  echo 'Service is active but container is not running yet...'
+                fi
+              else
+                echo 'Service is not active yet...'
+              fi
+
+              sleep \$CHECK_INTERVAL
+              ELAPSED=\$((ELAPSED + CHECK_INTERVAL))
+            done
+
+            # Timeout reached
+            echo 'Timeout reached! Service failed to start within 2 minutes.'
+            echo 'Final status check:'
+            systemctl status ${SERVICE_NAME} || true
+            docker ps --filter name=${PROJECT_FULL_NAME} || true
+            exit 1
           "
 
       - name: Cleanup remote backup & .gitkeep
