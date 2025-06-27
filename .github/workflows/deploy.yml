@@ -296,7 +296,7 @@ jobs:
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
             # Wait for service to start with timeout (2 minutes max)
             echo 'Waiting for service to start...'
-            TIMEOUT=120  # 2 minutes
+            TIMEOUT=180   # 3 minutes
             CHECK_INTERVAL=10
 
             ELAPSED=0
