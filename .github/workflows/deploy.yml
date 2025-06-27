@@ -84,7 +84,7 @@ on:
 
 env:
   PROJECT_NAME: ${{ github.event.repository.name }}
-  PROJECT_PATH: "/srv/OxyCloud/Projects/${{ inputs.environment || 'development' }}"
+  PROJECT_PATH: ${{ inputs.deployment-type == 'docker' && format('/srv/OxyCloud/Projects/{0}', inputs.environment == 'production' && 'Production' || inputs.environment == 'staging' && 'Staging' || 'Development') || '/srv/OxyCloud/Projects' }}
   PROJECT_TYPE: ${{ inputs.deployment-type }}
   ENVIRONMENT_MIN: ${{ inputs.environment == 'production' && 'prod' || inputs.environment == 'staging' && 'stag' || 'dev' }}
   STATIC_WEB_PATH: "/srv/OxyCloud/WebServer/domains/${{ inputs.web-static-domain }}/public_html/${{ inputs.web-static-path }}"
