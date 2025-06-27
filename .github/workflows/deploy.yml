@@ -12,16 +12,23 @@ on:
         description: "Author of the project (lowercase)"
         required: true
         type: string
-      environment:
+      deployment-type:
         description: |
-          Environment to deploy:
-          - `Development` - with docker compose
-          - `Staging` - with docker compose
-          - `Production` - with docker compose
-          - `WebStatic` - directly upload to web server
-          - `Temporary` - deleted after run
+          Type of deployment:
+          - `docker` - deploy with docker compose
+          - `webstatic` - upload directly to web server
+          - `temporary` - deleted after run
         required: true
         type: string
+      environment:
+        description: |
+          Environment (only for docker deployments):
+          - `development`
+          - `staging` 
+          - `production`
+        required: false
+        type: string
+        default: "development"
       artifact-name:
         description: "Artifact name to download"
         required: false
@@ -77,9 +84,9 @@ on:
 
 env:
   PROJECT_NAME: ${{ github.event.repository.name }}
-  PROJECT_PATH: "/srv/OxyCloud/Projects/${{ inputs.environment }}"
-  PROJECT_TYPE: ${{ inputs.environment == 'WebStatic' && 'web-static' || inputs.environment == 'Temporary' && 'temporary' || 'docker' }}
-  ENVIRONMENT_MIN: ${{ inputs.environment == 'Production' && 'prod' || inputs.environment == 'Staging' && 'stag' || 'dev' }}
+  PROJECT_PATH: "/srv/OxyCloud/Projects/${{ inputs.environment || 'development' }}"
+  PROJECT_TYPE: ${{ inputs.deployment-type }}
+  ENVIRONMENT_MIN: ${{ inputs.environment == 'production' && 'prod' || inputs.environment == 'staging' && 'stag' || 'dev' }}
   STATIC_WEB_PATH: "/srv/OxyCloud/WebServer/domains/${{ inputs.web-static-domain }}/public_html/${{ inputs.web-static-path }}"
   SERVICE_PATH: "/srv/OxyCloud/Services"
   DOCKER_COMPOSE_FILE: ${{ inputs.docker-compose-file || 'docker-compose.yml' }}
@@ -130,7 +137,7 @@ jobs:
             ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }}:${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
 
       - name: Upload static website to server for setup
-        if: env.PROJECT_TYPE == 'web-static'
+        if: env.PROJECT_TYPE == 'webstatic'
         run: |
           # Create static web directory
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
@@ -182,7 +189,7 @@ jobs:
           fi
 
           # Run setup commands - web static or docker project
-          if [ "${{ env.PROJECT_TYPE }}" == "web-static" ] || [ "${{ env.PROJECT_TYPE }}" == "docker" ]; then
+          if [ "${{ env.PROJECT_TYPE }}" == "webstatic" ] || [ "${{ env.PROJECT_TYPE }}" == "docker" ]; then
             echo "Running setup commands..."
             ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
               set -e
@@ -196,6 +203,21 @@ jobs:
     needs: [setup]
     if: always() && (needs.setup.result == 'success' || needs.setup.result == 'skipped')
     steps:
+      - name: Validate inputs
+        run: |
+          if [ "${{ inputs.deployment-type }}" == "docker" ] && [ -z "${{ inputs.environment }}" ]; then
+            echo "Error: 'environment' parameter is required when deployment-type is 'docker'"
+            echo "Please specify one of: development, staging, production"
+            exit 1
+          fi
+          
+          if [ "${{ inputs.deployment-type }}" == "webstatic" ]; then
+            if [ -z "${{ inputs.web-static-domain }}" ] || [ -z "${{ inputs.web-static-path }}" ]; then
+              echo "Error: 'web-static-domain' and 'web-static-path' are required when deployment-type is 'webstatic'"
+              exit 1
+            fi
+          fi
+
       - name: Define environment variables
         run: |
           echo "PROJECT_NAME_MIN=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
@@ -216,7 +238,7 @@ jobs:
           echo "Backing up project..."
 
           # Web static backup
-          if [ "${{ env.PROJECT_TYPE }}" == "web-static" ]; then
+          if [ "${{ env.PROJECT_TYPE }}" == "webstatic" ]; then
             echo "Backup with static website is not supported, skipping backup."
             exit 0
           fi
@@ -303,7 +325,7 @@ jobs:
             ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }}:${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
 
       - name: Upload static website to server
-        if: env.PROJECT_TYPE == 'web-static' && needs.setup.result == 'skipped'
+        if: env.PROJECT_TYPE == 'webstatic' && needs.setup.result == 'skipped'
         run: |
           # Create static web directory
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
@@ -345,7 +367,7 @@ jobs:
         env:
           SYSTEMD_SERVICE: |
             [Unit]
-            Description=${{ inputs.author }} - ${{ inputs.environment }} - ${{ env.PROJECT_NAME }}
+            Description=${{ inputs.author }} - ${{ inputs.environment || 'development' }} - ${{ env.PROJECT_NAME }}
             Requires=${{ inputs.docker-requires || 'docker.service' }}
             After=${{ inputs.docker-requires || 'docker.service' }}
 
@@ -486,7 +508,7 @@ jobs:
           fi
 
           # Run on success - web static or docker project
-          if [ "${{ env.PROJECT_TYPE }}" == "web-static" ] || [ "${{ env.PROJECT_TYPE }}" == "docker" ]; then
+          if [ "${{ env.PROJECT_TYPE }}" == "webstatic" ] || [ "${{ env.PROJECT_TYPE }}" == "docker" ]; then
             echo "Running on success command..."
             ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
               cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
@@ -507,7 +529,7 @@ jobs:
           fi
 
           # Run on failure - web static or docker project
-          if [ "${{ env.PROJECT_TYPE }}" == "web-static" ] || [ "${{ env.PROJECT_TYPE }}" == "docker" ]; then
+          if [ "${{ env.PROJECT_TYPE }}" == "webstatic" ] || [ "${{ env.PROJECT_TYPE }}" == "docker" ]; then
             echo "Running on failure command..."
             ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
               cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
