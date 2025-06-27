@@ -86,8 +86,115 @@ env:
   TEMPORARY_PATH: "/srv/OxyCloud/Projects/Temporary/${{ github.run_id }}"
 
 jobs:
+  setup:
+    runs-on: ubuntu-latest
+    if: inputs.run-on-setup
+    steps:
+      - name: Define environment variables
+        run: |
+          echo "PROJECT_NAME_MIN=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "PROJECT_FULL_NAME=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT_MIN }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "SERVICE_NAME=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT_MIN }}.service' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "PROJECT_BACKUP=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}.bak' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.VPS2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Download Configuration Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name || 'project-package' }}
+          path: .
+
+      - name: Upload project to server for setup
+        if: env.PROJECT_TYPE == 'docker'
+        run: |
+          # Create project directory
+          ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+            mkdir -p ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+          "
+
+          # Generate exclude arguments
+          EXCLUDE_ARGS=""
+          if [ ! -z "${{ inputs.exclude-folders }}" ]; then
+            EXCLUDE_ARGS=$(echo "${{ inputs.exclude-folders }}" | tr ',' '\n' | sed 's/^/--exclude=/' | tr '\n' ' ')
+          fi
+
+          # Upload project to server
+          rsync -ravz --no-perms --no-owner --no-group --delete \
+            $EXCLUDE_ARGS ./ \
+            ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }}:${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+
+      - name: Upload static website to server for setup
+        if: env.PROJECT_TYPE == 'web-static'
+        run: |
+          # Create static web directory
+          ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+            mkdir -p ${{ env.STATIC_WEB_PATH }}
+          "
+
+          # Generate exclude arguments
+          EXCLUDE_ARGS=""
+          if [ ! -z "${{ inputs.exclude-folders }}" ]; then
+            EXCLUDE_ARGS=$(echo "${{ inputs.exclude-folders }}" | tr ',' '\n' | sed 's/^/--exclude=/' | tr '\n' ' ')
+          fi
+
+          # Upload project to static web directory
+          rsync -ravz --no-perms --no-owner --no-group --delete \
+            $EXCLUDE_ARGS ./ \
+            ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }}:${{ env.STATIC_WEB_PATH }}
+
+      - name: Upload temporary project to server for setup
+        if: env.PROJECT_TYPE == 'temporary'
+        run: |
+          # Create temporary directory
+          ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+            mkdir -p ${{ env.TEMPORARY_PATH }}
+          "
+
+          # Generate exclude arguments
+          EXCLUDE_ARGS=""
+          if [ ! -z "${{ inputs.exclude-folders }}" ]; then
+            EXCLUDE_ARGS=$(echo "${{ inputs.exclude-folders }}" | tr ',' '\n' | sed 's/^/--exclude=/' | tr '\n' ' ')
+          fi
+
+          # Upload project to temporary directory
+          rsync -ravz --no-perms --no-owner --no-group --delete \
+            $EXCLUDE_ARGS ./ \
+            ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }}:${{ env.TEMPORARY_PATH }}
+
+      - name: Run setup commands
+        run: |
+          set -e  # Exit on any error
+          
+          # Run setup commands - temporary project
+          if [ "${{ env.PROJECT_TYPE }}" == "temporary" ]; then
+            echo "Running setup commands..."
+            ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+              set -e
+              cd ${{ env.TEMPORARY_PATH }}
+              ${{ inputs.run-on-setup }}
+            "
+          fi
+
+          # Run setup commands - web static or docker project
+          if [ "${{ env.PROJECT_TYPE }}" == "web-static" ] || [ "${{ env.PROJECT_TYPE }}" == "docker" ]; then
+            echo "Running setup commands..."
+            ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
+              set -e
+              cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+              ${{ inputs.run-on-setup }}
+            "
+          fi
+
   deploy:
     runs-on: ubuntu-latest
+    needs: [setup]
+    if: always() && (needs.setup.result == 'success' || needs.setup.result == 'skipped')
     steps:
       - name: Define environment variables
         run: |
@@ -177,7 +284,7 @@ jobs:
           "
 
       - name: Upload project to server
-        if: env.PROJECT_TYPE == 'docker'
+        if: env.PROJECT_TYPE == 'docker' && needs.setup.result == 'skipped'
         run: |
           # Create project directory
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
@@ -196,7 +303,7 @@ jobs:
             ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }}:${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
 
       - name: Upload static website to server
-        if: env.PROJECT_TYPE == 'web-static'
+        if: env.PROJECT_TYPE == 'web-static' && needs.setup.result == 'skipped'
         run: |
           # Create static web directory
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
@@ -215,7 +322,7 @@ jobs:
             ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }}:${{ env.STATIC_WEB_PATH }}
 
       - name: Upload temporary project to server
-        if: env.PROJECT_TYPE == 'temporary'
+        if: env.PROJECT_TYPE == 'temporary' && needs.setup.result == 'skipped'
         run: |
           # Create temporary directory
           ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
@@ -232,27 +339,6 @@ jobs:
           rsync -ravz --no-perms --no-owner --no-group --delete \
             $EXCLUDE_ARGS ./ \
             ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }}:${{ env.TEMPORARY_PATH }}
-
-      - name: Run before deployment
-        if: inputs.run-on-setup
-        run: |
-          # Run before deployment - temporary project
-          if [ "${{ env.PROJECT_TYPE }}" == "temporary" ]; then
-            echo "Running before deployment command..."
-            ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
-              cd ${{ env.TEMPORARY_PATH }}
-              ${{ inputs.run-on-setup }}
-            "
-          fi
-
-          # Run before deployment - web static or docker project
-          if [ "${{ env.PROJECT_TYPE }}" == "web-static" ] || [ "${{ env.PROJECT_TYPE }}" == "docker" ]; then
-            echo "Running before deployment command..."
-            ssh ${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }} "
-              cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
-              ${{ inputs.run-on-setup }}
-            "
-          fi
 
       - name: Create systemd service
         if: env.PROJECT_TYPE == 'docker'
