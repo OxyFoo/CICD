@@ -32,57 +32,25 @@ jobs:
       docker-compose-file: "docker-compose.prod.yml"   # Fichier Docker Compose à utiliser (défaut: docker-compose.yml)
       docker-requires: "docker.service"                # Service systemd requis (défaut: docker.service)
       
-      # Tests avec dépendances (YAML)
+      # Configuration préliminaire
+      setup-steps: |
+        cp .env.example .env
+        npm install --production
+        npm run setup
+      
+      # Tests simples
       test-steps: |
-        - name: Unit Tests
-          command: npm run test:unit
-        
-        - name: Lint Check
-          command: npm run lint
-          
-        - name: E2E Tests
-          command: npm run test:e2e
-          depends_on: [Unit Tests]
-          
-        - name: Integration Tests
-          command: npm run test:integration
-          depends_on: [Unit Tests, E2E Tests]
+        npm run lint
+        npm run test
+        npm run test:e2e
       
       skip-tests: false                                # Ignorer la phase de test (défaut: false)
-      run-on-prepare: "npm run migrate"                # Commandes de préparation à exécuter (migrations, backups, etc.)
-      skip-prepare: false                              # Ignorer la phase de préparation (défaut: false)
       health-check-timeout: 60                         # Timeout pour les vérifications en secondes (défaut: 60)
       skip-verification: false                         # Ignorer la vérification du déploiement (défaut: false)
       restore-on-failure: true                         # Restaurer la sauvegarde en cas d'échec (défaut: true)
       run-on-success: "echo 'Deployment successful'"   # Commandes à exécuter en cas de succès
       run-on-failure: "echo 'Deployment failed'"       # Commandes à exécuter en cas d'échec
 ```
-
-**💡 Tests avec dépendances :**
-Le paramètre `test-steps` utilise un format YAML pour définir des tests avec leurs dépendances. Les tests sans dépendances s'exécutent en parallèle, tandis que ceux avec dépendances attendent la réussite des tests requis.
-
-**Format YAML :**
-```yaml
-test-steps: |
-  - name: Unit Tests           # Test sans dépendance (Phase 1)
-    command: npm run test:unit
-
-  - name: Lint Check           # Test sans dépendance (Phase 1, en parallèle)
-    command: npm run lint
-
-  - name: E2E Tests            # Test avec dépendance (Phase 2)
-    command: npm run test:e2e
-    depends_on: [Unit Tests]
-
-  - name: Integration Tests    # Test avec dépendances multiples (Phase 3)
-    command: npm run test:integration
-    depends_on: [Unit Tests, E2E Tests]
-```
-
-**Exécution :**
-- **Phase 1** : `Unit Tests` et `Lint Check` en parallèle
-- **Phase 2** : `E2E Tests` seulement si `Unit Tests` réussit
-- **Phase 3** : `Integration Tests` seulement si `Unit Tests` et `E2E Tests` réussissent
 
 ---
 
