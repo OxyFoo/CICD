@@ -196,7 +196,11 @@ jobs:
           EOF
             
             # Execute setup commands
-            if grep -q '^-' run_setup.sh; then
+            if grep -q '^#!/bin/bash' run_setup.sh; then
+              # Bash script - execute as a complete script
+              chmod +x run_setup.sh
+              ./run_setup.sh
+            elif grep -q '^-' run_setup.sh; then
               # YAML format - extract commands
               grep '^ *command:' run_setup.sh | sed 's/^ *command: *//' | while read cmd; do
                 echo \"Running: \$cmd\"
@@ -251,7 +255,11 @@ jobs:
           EOF
             
             # Execute tests
-            if grep -q '^-' run_tests.sh; then
+            if grep -q '^#!/bin/bash' run_tests.sh; then
+              # Bash script - execute as a complete script
+              chmod +x run_tests.sh
+              ./run_tests.sh
+            elif grep -q '^-' run_tests.sh; then
               # YAML format - extract commands
               grep '^ *command:' run_tests.sh | sed 's/^ *command: *//' | while read cmd; do
                 echo \"Running: \$cmd\"
