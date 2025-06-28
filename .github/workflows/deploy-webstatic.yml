@@ -62,16 +62,16 @@ on:
         required: false
         type: string
     secrets:
-      DEPLOY_SERVER_SSH_PRIVATE_KEY:
+      VPS_SSH_PRIVATE_KEY:
         description: "SSH private key for server"
         required: true
-      DEPLOY_SERVER_USER:
+      VPS_USER:
         description: "User for server"
         required: true
-      DEPLOY_SERVER_HOST:
+      VPS_HOST:
         description: "Host for server"
         required: true
-      DEPLOY_SERVER_PORT:
+      VPS_PORT:
         description: "SSH port for server (default: 22)"
         required: false
 
@@ -87,16 +87,16 @@ jobs:
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.DEPLOY_SERVER_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          echo "${{ secrets.VPS_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           # Configure SSH port
-          SSH_PORT="${{ secrets.DEPLOY_SERVER_PORT }}"
+          SSH_PORT="${{ secrets.VPS_PORT }}"
           if [ -z "$SSH_PORT" ]; then
             SSH_PORT="22"
           fi
-          ssh-keyscan -H -p $SSH_PORT ${{ secrets.DEPLOY_SERVER_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H -p $SSH_PORT ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
           # Configure SSH client for custom port
-          echo "Host ${{ secrets.DEPLOY_SERVER_HOST }}" >> ~/.ssh/config
+          echo "Host ${{ secrets.VPS_HOST }}" >> ~/.ssh/config
           echo "  Port $SSH_PORT" >> ~/.ssh/config
 
       - name: Download artifact
@@ -114,10 +114,10 @@ jobs:
           fi
 
           # Create static web directory and upload
-          ssh ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} "mkdir -p ${{ env.STATIC_WEB_PATH }}"
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "mkdir -p ${{ env.STATIC_WEB_PATH }}"
           rsync -ravz --no-perms --no-owner --no-group --delete \
             $EXCLUDE_ARGS ./ \
-            ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }}:${{ env.STATIC_WEB_PATH }}
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${{ env.STATIC_WEB_PATH }}
           echo "Files uploaded to static web directory"
 
   test:
@@ -129,22 +129,22 @@ jobs:
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.DEPLOY_SERVER_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          echo "${{ secrets.VPS_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           # Configure SSH port
-          SSH_PORT="${{ secrets.DEPLOY_SERVER_PORT }}"
+          SSH_PORT="${{ secrets.VPS_PORT }}"
           if [ -z "$SSH_PORT" ]; then
             SSH_PORT="22"
           fi
-          ssh-keyscan -H -p $SSH_PORT ${{ secrets.DEPLOY_SERVER_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H -p $SSH_PORT ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
           # Configure SSH client for custom port
-          echo "Host ${{ secrets.DEPLOY_SERVER_HOST }}" >> ~/.ssh/config
+          echo "Host ${{ secrets.VPS_HOST }}" >> ~/.ssh/config
           echo "  Port $SSH_PORT" >> ~/.ssh/config
 
       - name: Run tests
         run: |
           echo "Running tests on static website..."
-          ssh ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} "
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
             set -e
             cd ${{ env.STATIC_WEB_PATH }}
             ${{ inputs.run-on-test }}
@@ -195,23 +195,23 @@ jobs:
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.DEPLOY_SERVER_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          echo "${{ secrets.VPS_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           # Configure SSH port
-          SSH_PORT="${{ secrets.DEPLOY_SERVER_PORT }}"
+          SSH_PORT="${{ secrets.VPS_PORT }}"
           if [ -z "$SSH_PORT" ]; then
             SSH_PORT="22"
           fi
-          ssh-keyscan -H -p $SSH_PORT ${{ secrets.DEPLOY_SERVER_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H -p $SSH_PORT ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
           # Configure SSH client for custom port
-          echo "Host ${{ secrets.DEPLOY_SERVER_HOST }}" >> ~/.ssh/config
+          echo "Host ${{ secrets.VPS_HOST }}" >> ~/.ssh/config
           echo "  Port $SSH_PORT" >> ~/.ssh/config
 
       - name: Run success commands
         if: success() && inputs.run-on-success
         run: |
           echo "Running success commands..."
-          ssh ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} "
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
             cd ${{ env.STATIC_WEB_PATH }}
             ${{ inputs.run-on-success }}
           "
@@ -220,7 +220,7 @@ jobs:
         if: failure() && inputs.run-on-failure
         run: |
           echo "Running failure commands..."
-          ssh ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} "
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
             cd ${{ env.STATIC_WEB_PATH }}
             ${{ inputs.run-on-failure }}
           " || true

@@ -113,10 +113,10 @@ permissions:
 
 Tous les workflows nécessitent ces secrets :
 
-- `DEPLOY_SERVER_SSH_PRIVATE_KEY` : Clé SSH privée pour se connecter au serveur
-- `DEPLOY_SERVER_USER` : Nom d'utilisateur SSH  
-- `DEPLOY_SERVER_HOST` : Adresse IP ou nom du serveur
-- `DEPLOY_SERVER_PORT` : Port SSH (optionnel, défaut: 22)
+- `VPS_SSH_PRIVATE_KEY` : Clé SSH privée pour se connecter au serveur
+- `VPS_USER` : Nom d'utilisateur SSH  
+- `VPS_HOST` : Adresse IP ou nom du serveur
+- `VPS_PORT` : Port SSH (optionnel, défaut: 22)
 
 ### Configuration des secrets
 
@@ -128,10 +128,10 @@ secrets: inherit  # Hérite automatiquement des secrets de l'organisation
 **Si les secrets sont configurés au niveau du repository :**
 ```yaml
 secrets:
-  DEPLOY_SERVER_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SERVER_SSH_PRIVATE_KEY }}
-  DEPLOY_SERVER_USER: ${{ secrets.DEPLOY_SERVER_USER }}
-  DEPLOY_SERVER_HOST: ${{ secrets.DEPLOY_SERVER_HOST }}
-  DEPLOY_SERVER_PORT: ${{ secrets.DEPLOY_SERVER_PORT }}  # optionnel
+  VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+  VPS_USER: ${{ secrets.VPS_USER }}
+  VPS_HOST: ${{ secrets.VPS_HOST }}
+  VPS_PORT: ${{ secrets.VPS_PORT }}  # optionnel
 ```
 
 ## 📋 Exemple complet
@@ -176,10 +176,10 @@ jobs:
       run-on-test: "npm run test:e2e"
       health-check-timeout: 120
     secrets:
-      DEPLOY_SERVER_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SERVER_SSH_PRIVATE_KEY }}
-      DEPLOY_SERVER_USER: ${{ secrets.DEPLOY_SERVER_USER }}
-      DEPLOY_SERVER_HOST: ${{ secrets.DEPLOY_SERVER_HOST }}
-      DEPLOY_SERVER_PORT: ${{ secrets.DEPLOY_SERVER_PORT }}  # optionnel
+      VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_PORT: ${{ secrets.VPS_PORT }}  # optionnel
 ```
 
 </details>
