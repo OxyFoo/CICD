@@ -1,0 +1,230 @@
+name: Deploy Static Website
+
+permissions:
+  contents: read
+  actions: write
+  packages: write
+
+on:
+  workflow_call:
+    inputs:
+      author:
+        description: "Author of the project (lowercase)"
+        required: true
+        type: string
+      web-static-domain:
+        description: "Web static domain (e.g., example.com)"
+        required: true
+        type: string
+      web-static-path:
+        description: "Web static path (e.g., myapp)"
+        required: true
+        type: string
+      artifact-name:
+        description: "Artifact name to download (default: project-package)"
+        required: false
+        type: string
+        default: "project-package"
+      exclude-folders:
+        description: "Folders to exclude during upload (default: .git,.github,node_modules)"
+        required: false
+        type: string
+        default: ".git,.github,node_modules"
+      run-on-test:
+        description: "Remote command to run during test phase"
+        required: false
+        type: string
+      skip-tests:
+        description: "Skip the test phase"
+        required: false
+        type: boolean
+        default: false
+      health-check-url:
+        description: "URL to check for website accessibility (e.g., https://example.com/myapp)"
+        required: false
+        type: string
+      health-check-timeout:
+        description: "Timeout in seconds for health checks (default: 60)"
+        required: false
+        type: number
+        default: 60
+      skip-verification:
+        description: "Skip the verification phase"
+        required: false
+        type: boolean
+        default: false
+      run-on-success:
+        description: "Remote command to run on success"
+        required: false
+        type: string
+      run-on-failure:
+        description: "Remote command to run on failure"
+        required: false
+        type: string
+    secrets:
+      DEPLOY_SERVER_SSH_PRIVATE_KEY:
+        description: "SSH private key for server"
+        required: true
+      DEPLOY_SERVER_USER:
+        description: "User for server"
+        required: true
+      DEPLOY_SERVER_HOST:
+        description: "Host for server"
+        required: true
+      DEPLOY_SERVER_PORT:
+        description: "SSH port for server (default: 22)"
+        required: false
+
+env:
+  PROJECT_NAME: ${{ github.event.repository.name }}
+  STATIC_WEB_PATH: "/srv/OxyCloud/WebServer/domains/${{ inputs.web-static-domain }}/public_html/${{ inputs.web-static-path }}"
+
+jobs:
+  deploy:
+    name: "🚀 Deploy Files"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SERVER_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          # Configure SSH port
+          SSH_PORT="${{ secrets.DEPLOY_SERVER_PORT }}"
+          if [ -z "$SSH_PORT" ]; then
+            SSH_PORT="22"
+          fi
+          ssh-keyscan -H -p $SSH_PORT ${{ secrets.DEPLOY_SERVER_HOST }} >> ~/.ssh/known_hosts
+          # Configure SSH client for custom port
+          echo "Host ${{ secrets.DEPLOY_SERVER_HOST }}" >> ~/.ssh/config
+          echo "  Port $SSH_PORT" >> ~/.ssh/config
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: .
+
+      - name: Upload files to server
+        run: |
+          # Generate exclude arguments
+          EXCLUDE_ARGS=""
+          if [ ! -z "${{ inputs.exclude-folders }}" ]; then
+            EXCLUDE_ARGS=$(echo "${{ inputs.exclude-folders }}" | tr ',' '\n' | sed 's/^/--exclude=/' | tr '\n' ' ')
+          fi
+
+          # Create static web directory and upload
+          ssh ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} "mkdir -p ${{ env.STATIC_WEB_PATH }}"
+          rsync -ravz --no-perms --no-owner --no-group --delete \
+            $EXCLUDE_ARGS ./ \
+            ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }}:${{ env.STATIC_WEB_PATH }}
+          echo "Files uploaded to static web directory"
+
+  test:
+    name: "🧪 Run Tests"
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    if: inputs.run-on-test && !inputs.skip-tests
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SERVER_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          # Configure SSH port
+          SSH_PORT="${{ secrets.DEPLOY_SERVER_PORT }}"
+          if [ -z "$SSH_PORT" ]; then
+            SSH_PORT="22"
+          fi
+          ssh-keyscan -H -p $SSH_PORT ${{ secrets.DEPLOY_SERVER_HOST }} >> ~/.ssh/known_hosts
+          # Configure SSH client for custom port
+          echo "Host ${{ secrets.DEPLOY_SERVER_HOST }}" >> ~/.ssh/config
+          echo "  Port $SSH_PORT" >> ~/.ssh/config
+
+      - name: Run tests
+        run: |
+          echo "Running tests on static website..."
+          ssh ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} "
+            set -e
+            cd ${{ env.STATIC_WEB_PATH }}
+            ${{ inputs.run-on-test }}
+          "
+
+  verify:
+    name: "✅ Verify Deployment"
+    runs-on: ubuntu-latest
+    needs: [deploy, test]
+    if: always() && needs.deploy.result == 'success' && (needs.test.result == 'success' || needs.test.result == 'skipped') && !inputs.skip-verification
+    steps:
+      - name: Verify static website
+        if: inputs.health-check-url
+        run: |
+          echo "Verifying static website accessibility..."
+          TIMEOUT=${{ inputs.health-check-timeout }}
+          CHECK_INTERVAL=5
+          ELAPSED=0
+          
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            echo "Checking website status... ($ELAPSED/$TIMEOUT seconds)"
+            
+            if curl -sf -m 10 "${{ inputs.health-check-url }}" > /dev/null; then
+              echo "Website is accessible at ${{ inputs.health-check-url }}"
+              exit 0
+            else
+              echo "Website not yet accessible, retrying..."
+              sleep $CHECK_INTERVAL
+              ELAPSED=$((ELAPSED + CHECK_INTERVAL))
+            fi
+          done
+          
+          echo "Warning: Website verification timed out, but deployment may still be successful"
+          echo "Please manually check: ${{ inputs.health-check-url }}"
+
+      - name: Basic verification
+        if: ${{ !inputs.health-check-url }}
+        run: |
+          echo "No health check URL provided, skipping accessibility verification"
+          echo "Static website deployed successfully to ${{ env.STATIC_WEB_PATH }}"
+
+  cleanup:
+    name: "🧹 Cleanup & Finalize"
+    runs-on: ubuntu-latest
+    needs: [deploy, test, verify]
+    if: always()
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SERVER_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          # Configure SSH port
+          SSH_PORT="${{ secrets.DEPLOY_SERVER_PORT }}"
+          if [ -z "$SSH_PORT" ]; then
+            SSH_PORT="22"
+          fi
+          ssh-keyscan -H -p $SSH_PORT ${{ secrets.DEPLOY_SERVER_HOST }} >> ~/.ssh/known_hosts
+          # Configure SSH client for custom port
+          echo "Host ${{ secrets.DEPLOY_SERVER_HOST }}" >> ~/.ssh/config
+          echo "  Port $SSH_PORT" >> ~/.ssh/config
+
+      - name: Run success commands
+        if: success() && inputs.run-on-success
+        run: |
+          echo "Running success commands..."
+          ssh ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} "
+            cd ${{ env.STATIC_WEB_PATH }}
+            ${{ inputs.run-on-success }}
+          "
+
+      - name: Run failure commands
+        if: failure() && inputs.run-on-failure
+        run: |
+          echo "Running failure commands..."
+          ssh ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} "
+            cd ${{ env.STATIC_WEB_PATH }}
+            ${{ inputs.run-on-failure }}
+          " || true
+
+      - name: Cleanup local files
+        run: |
+          rm -rf ./*

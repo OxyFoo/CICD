@@ -1,0 +1,424 @@
+name: Deploy Docker Application
+
+permissions:
+  contents: read
+  actions: write
+  packages: write
+
+on:
+  workflow_call:
+    inputs:
+      author:
+        description: "Author of the project (lowercase)"
+        required: true
+        type: string
+      environment:
+        description: |
+          Environment to deploy:
+          - `development`
+          - `staging` 
+          - `production`
+        required: true
+        type: string
+      artifact-name:
+        description: "Artifact name to download (default: project-package)"
+        required: false
+        type: string
+        default: "project-package"
+      exclude-folders:
+        description: "Folders to exclude during upload (default: .git,.github,node_modules)"
+        required: false
+        type: string
+        default: ".git,.github,node_modules"
+      docker-compose-file:
+        description: "Docker compose file (default: docker-compose.yml)"
+        required: false
+        type: string
+        default: "docker-compose.yml"
+      docker-requires:
+        description: "Docker requires before run (default: docker.service)"
+        required: false
+        type: string
+        default: "docker.service"
+      run-on-test:
+        description: "Remote command to run during test phase"
+        required: false
+        type: string
+      skip-tests:
+        description: "Skip the test phase"
+        required: false
+        type: boolean
+        default: false
+      health-check-timeout:
+        description: "Timeout in seconds for health checks (default: 60)"
+        required: false
+        type: number
+        default: 60
+      skip-verification:
+        description: "Skip the verification phase"
+        required: false
+        type: boolean
+        default: false
+      restore-on-failure:
+        description: "Automatically restore from backup if deployment fails (default: true)"
+        required: false
+        type: boolean
+        default: true
+      run-on-success:
+        description: "Remote command to run on success"
+        required: false
+        type: string
+      run-on-failure:
+        description: "Remote command to run on failure"
+        required: false
+        type: string
+    secrets:
+      DEPLOY_SERVER_SSH_PRIVATE_KEY:
+        description: "SSH private key for server"
+        required: true
+      DEPLOY_SERVER_USER:
+        description: "User for server"
+        required: true
+      DEPLOY_SERVER_HOST:
+        description: "Host for server"
+        required: true
+      DEPLOY_SERVER_PORT:
+        description: "SSH port for server (default: 22)"
+        required: false
+
+env:
+  PROJECT_NAME: ${{ github.event.repository.name }}
+  PROJECT_PATH: ${{ format('/srv/OxyCloud/Projects/{0}', inputs.environment == 'production' && 'Production' || inputs.environment == 'staging' && 'Staging' || 'Development') }}
+  ENVIRONMENT_MIN: ${{ inputs.environment == 'production' && 'prod' || inputs.environment == 'staging' && 'stag' || 'dev' }}
+  SERVICE_PATH: "/srv/OxyCloud/Services"
+
+jobs:
+  deploy:
+    name: "🚀 Deploy Files"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Define environment variables
+        run: |
+          echo "PROJECT_NAME_MIN=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "PROJECT_FULL_NAME=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT_MIN }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "SERVICE_NAME=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT_MIN }}.service' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "PROJECT_BACKUP=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}.bak' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SERVER_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          # Configure SSH port
+          SSH_PORT="${{ secrets.DEPLOY_SERVER_PORT }}"
+          if [ -z "$SSH_PORT" ]; then
+            SSH_PORT="22"
+          fi
+          ssh-keyscan -H -p $SSH_PORT ${{ secrets.DEPLOY_SERVER_HOST }} >> ~/.ssh/known_hosts
+          # Configure SSH client for custom port
+          echo "Host ${{ secrets.DEPLOY_SERVER_HOST }}" >> ~/.ssh/config
+          echo "  Port $SSH_PORT" >> ~/.ssh/config
+
+      - name: Create backup
+        run: |
+          ssh ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} "
+            if [ -d ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN ]; then
+              echo 'Creating backup of existing project...'
+              rm -rf ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP
+              cp -r ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP
+              echo 'Backup created successfully'
+            else
+              echo 'No existing project found, skipping backup'
+            fi
+          "
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: .
+
+      - name: Upload files to server
+        run: |
+          # Generate exclude arguments
+          EXCLUDE_ARGS=""
+          if [ ! -z "${{ inputs.exclude-folders }}" ]; then
+            EXCLUDE_ARGS=$(echo "${{ inputs.exclude-folders }}" | tr ',' '\n' | sed 's/^/--exclude=/' | tr '\n' ' ')
+          fi
+
+          # Create project directory and upload
+          ssh ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} "mkdir -p ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN"
+          rsync -ravz --no-perms --no-owner --no-group --delete \
+            $EXCLUDE_ARGS ./ \
+            ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }}:${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+          echo "Files uploaded to Docker project directory"
+
+  test:
+    name: "🧪 Run Tests"
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    if: inputs.run-on-test && !inputs.skip-tests
+    steps:
+      - name: Define environment variables
+        run: |
+          echo "PROJECT_NAME_MIN=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SERVER_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          # Configure SSH port
+          SSH_PORT="${{ secrets.DEPLOY_SERVER_PORT }}"
+          if [ -z "$SSH_PORT" ]; then
+            SSH_PORT="22"
+          fi
+          ssh-keyscan -H -p $SSH_PORT ${{ secrets.DEPLOY_SERVER_HOST }} >> ~/.ssh/known_hosts
+          # Configure SSH client for custom port
+          echo "Host ${{ secrets.DEPLOY_SERVER_HOST }}" >> ~/.ssh/config
+          echo "  Port $SSH_PORT" >> ~/.ssh/config
+
+      - name: Run tests
+        run: |
+          echo "Running tests on Docker project..."
+          ssh ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} "
+            set -e
+            cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+            ${{ inputs.run-on-test }}
+          "
+
+  launch:
+    name: "🚢 Launch Services"
+    runs-on: ubuntu-latest
+    needs: [deploy, test]
+    if: always() && needs.deploy.result == 'success' && (needs.test.result == 'success' || needs.test.result == 'skipped')
+    steps:
+      - name: Define environment variables
+        run: |
+          echo "PROJECT_NAME_MIN=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "PROJECT_FULL_NAME=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT_MIN }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "SERVICE_NAME=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT_MIN }}.service' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SERVER_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          # Configure SSH port
+          SSH_PORT="${{ secrets.DEPLOY_SERVER_PORT }}"
+          if [ -z "$SSH_PORT" ]; then
+            SSH_PORT="22"
+          fi
+          ssh-keyscan -H -p $SSH_PORT ${{ secrets.DEPLOY_SERVER_HOST }} >> ~/.ssh/known_hosts
+          # Configure SSH client for custom port
+          echo "Host ${{ secrets.DEPLOY_SERVER_HOST }}" >> ~/.ssh/config
+          echo "  Port $SSH_PORT" >> ~/.ssh/config
+
+      - name: Validate Docker configuration
+        run: |
+          echo "Validating Docker configuration on server..."
+          ssh ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} "
+            cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+            
+            # Check docker-compose file exists
+            if [ ! -f '${{ inputs.docker-compose-file }}' ]; then
+              echo 'Docker compose file not found on server'
+              exit 1
+            fi
+
+            # Check container name
+            if ! grep -q 'container_name' '${{ inputs.docker-compose-file }}'; then
+              echo 'Container name not found in docker-compose file'
+              exit 1
+            fi
+
+            CONTAINER_NAMES=\$(grep 'container_name' '${{ inputs.docker-compose-file }}' | awk '{print \$2}' | tr -d '\"')
+            echo \"Container name: \$CONTAINER_NAMES\"
+            if [ -z \"\$CONTAINER_NAMES\" ] || [[ \"\$CONTAINER_NAMES\" != *\"$PROJECT_FULL_NAME\"* ]]; then
+              echo 'Container name not defined or different from project name'
+              echo \"Please define container_name in docker-compose file as '$PROJECT_FULL_NAME'\"
+              exit 1
+            fi
+          "
+
+      - name: Launch Docker service
+        env:
+          SYSTEMD_SERVICE: |
+            [Unit]
+            Description=${{ inputs.author }} - ${{ inputs.environment }} - ${{ env.PROJECT_NAME }}
+            Requires=${{ inputs.docker-requires }}
+            After=${{ inputs.docker-requires }}
+
+            [Service]
+            Type=simple
+            RemainAfterExit=yes
+            User=${{ secrets.DEPLOY_SERVER_USER }}
+            WorkingDirectory=${{ env.PROJECT_PATH }}/PROJECT_NAME_MIN
+            ExecStart=/usr/bin/docker compose -f ${{ inputs.docker-compose-file }} up --build
+            ExecStop=/usr/bin/docker compose -f ${{ inputs.docker-compose-file }} down
+
+            [Install]
+            WantedBy=multi-user.target
+        run: |
+          # Create systemd service
+          SYSTEMD_SERVICE=$(echo "$SYSTEMD_SERVICE" | sed "s/PROJECT_NAME_MIN/$PROJECT_NAME_MIN/g")
+          ssh ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} "
+            printf \"$SYSTEMD_SERVICE\" > ${{ env.SERVICE_PATH }}/${SERVICE_NAME}
+          "
+
+          # Start the service
+          ssh ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} "
+            sudo oxy -u
+            sudo systemctl start ${SERVICE_NAME}
+          "
+          echo "Docker service launched successfully"
+
+  verify:
+    name: "✅ Verify Deployment"
+    runs-on: ubuntu-latest
+    needs: [deploy, test, launch]
+    if: always() && needs.deploy.result == 'success' && (needs.test.result == 'success' || needs.test.result == 'skipped') && needs.launch.result == 'success' && !inputs.skip-verification
+    steps:
+      - name: Define environment variables
+        run: |
+          echo "PROJECT_NAME_MIN=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "PROJECT_FULL_NAME=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT_MIN }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "SERVICE_NAME=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT_MIN }}.service' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SERVER_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          # Configure SSH port
+          SSH_PORT="${{ secrets.DEPLOY_SERVER_PORT }}"
+          if [ -z "$SSH_PORT" ]; then
+            SSH_PORT="22"
+          fi
+          ssh-keyscan -H -p $SSH_PORT ${{ secrets.DEPLOY_SERVER_HOST }} >> ~/.ssh/known_hosts
+          # Configure SSH client for custom port
+          echo "Host ${{ secrets.DEPLOY_SERVER_HOST }}" >> ~/.ssh/config
+          echo "  Port $SSH_PORT" >> ~/.ssh/config
+
+      - name: Verify Docker deployment
+        run: |
+          ssh ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} "
+            echo 'Verifying Docker deployment...'
+            TIMEOUT=${{ inputs.health-check-timeout }}
+            CHECK_INTERVAL=10
+            ELAPSED=0
+
+            while [ \$ELAPSED -lt \$TIMEOUT ]; do
+              echo \"Checking service status... (\$ELAPSED/\$TIMEOUT seconds)\"
+
+              # Check if service is active
+              if systemctl is-active --quiet ${SERVICE_NAME}; then
+                echo 'Service is active, checking container...'
+
+                # Check if container is running
+                if docker ps --filter name=${PROJECT_FULL_NAME} --format '{{.Names}}' | grep -Fq ${PROJECT_FULL_NAME}; then
+                  echo 'Service and container are running successfully!'
+                  
+                  # Cleanup backup
+                  if [ -d ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP ]; then
+                    rm -rf ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP
+                    echo 'Backup cleaned up.'
+                  fi
+                  
+                  # Remove .gitkeep files
+                  find ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN -name '.gitkeep' -delete 2>/dev/null || true
+                  
+                  exit 0
+                else
+                  echo 'Service is active but container is not running yet...'
+                fi
+              else
+                echo 'Service is not active yet...'
+              fi
+
+              sleep \$CHECK_INTERVAL
+              ELAPSED=\$((ELAPSED + CHECK_INTERVAL))
+            done
+
+            # Timeout reached - verification failed
+            echo 'Verification failed! Service did not start within timeout.'
+            echo 'Final status check:'
+            systemctl status ${SERVICE_NAME} || true
+            docker ps --filter name=${PROJECT_FULL_NAME} || true
+            exit 1
+          "
+
+  cleanup:
+    name: "🧹 Cleanup & Finalize"
+    runs-on: ubuntu-latest
+    needs: [deploy, test, launch, verify]
+    if: always()
+    steps:
+      - name: Define environment variables
+        run: |
+          echo "PROJECT_NAME_MIN=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "PROJECT_BACKUP=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}.bak' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "SERVICE_NAME=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT_MIN }}.service' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SERVER_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          # Configure SSH port
+          SSH_PORT="${{ secrets.DEPLOY_SERVER_PORT }}"
+          if [ -z "$SSH_PORT" ]; then
+            SSH_PORT="22"
+          fi
+          ssh-keyscan -H -p $SSH_PORT ${{ secrets.DEPLOY_SERVER_HOST }} >> ~/.ssh/known_hosts
+          # Configure SSH client for custom port
+          echo "Host ${{ secrets.DEPLOY_SERVER_HOST }}" >> ~/.ssh/config
+          echo "  Port $SSH_PORT" >> ~/.ssh/config
+
+      - name: Restore on failure
+        if: failure() && inputs.restore-on-failure
+        run: |
+          ssh ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} "
+            if [ -d ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP ]; then
+              echo 'Restoring from backup due to deployment failure...'
+              
+              # Stop failed service
+              sudo systemctl stop ${SERVICE_NAME} || true
+              
+              # Remove failed deployment
+              rm -rf ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+              
+              # Restore backup
+              mv ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+              
+              # Restart service
+              sudo oxy -u
+              sudo systemctl restart ${SERVICE_NAME} || true
+              
+              echo 'Project restored from backup'
+            else
+              echo 'No backup found to restore'
+            fi
+          "
+
+      - name: Run success commands
+        if: success() && inputs.run-on-success
+        run: |
+          echo "Running success commands..."
+          ssh ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} "
+            cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+            ${{ inputs.run-on-success }}
+          "
+
+      - name: Run failure commands
+        if: failure() && inputs.run-on-failure
+        run: |
+          echo "Running failure commands..."
+          ssh ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} "
+            cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+            ${{ inputs.run-on-failure }}
+          " || true
+
+      - name: Cleanup local files
+        run: |
+          rm -rf ./*
