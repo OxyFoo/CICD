@@ -49,6 +49,15 @@ on:
         required: false
         type: boolean
         default: false
+      run-on-prepare:
+        description: "Remote command to run during prepare phase (after tests, before launch)"
+        required: false
+        type: string
+      skip-prepare:
+        description: "Skip the prepare phase"
+        required: false
+        type: boolean
+        default: false
       health-check-timeout:
         description: "Timeout in seconds for health checks (default: 60)"
         required: false
@@ -187,11 +196,45 @@ jobs:
             ${{ inputs.run-on-test }}
           "
 
+  prepare:
+    name: "🔧 Prepare Services"
+    runs-on: ubuntu-latest
+    needs: [deploy, test]
+    if: inputs.run-on-prepare && !inputs.skip-prepare && always() && needs.deploy.result == 'success' && (needs.test.result == 'success' || needs.test.result == 'skipped')
+    steps:
+      - name: Define environment variables
+        run: |
+          echo "PROJECT_NAME_MIN=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SERVER_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          # Configure SSH port
+          SSH_PORT="${{ secrets.DEPLOY_SERVER_PORT }}"
+          if [ -z "$SSH_PORT" ]; then
+            SSH_PORT="22"
+          fi
+          ssh-keyscan -H -p $SSH_PORT ${{ secrets.DEPLOY_SERVER_HOST }} >> ~/.ssh/known_hosts
+          # Configure SSH client for custom port
+          echo "Host ${{ secrets.DEPLOY_SERVER_HOST }}" >> ~/.ssh/config
+          echo "  Port $SSH_PORT" >> ~/.ssh/config
+
+      - name: Run prepare commands
+        run: |
+          echo "Running prepare commands (migrations, backups, etc.)..."
+          ssh ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} "
+            set -e
+            cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+            ${{ inputs.run-on-prepare }}
+          "
+
   launch:
     name: "🚢 Launch Services"
     runs-on: ubuntu-latest
-    needs: [deploy, test]
-    if: always() && needs.deploy.result == 'success' && (needs.test.result == 'success' || needs.test.result == 'skipped')
+    needs: [deploy, test, prepare]
+    if: always() && needs.deploy.result == 'success' && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')
     steps:
       - name: Define environment variables
         run: |
@@ -276,8 +319,8 @@ jobs:
   verify:
     name: "✅ Verify Deployment"
     runs-on: ubuntu-latest
-    needs: [deploy, test, launch]
-    if: always() && needs.deploy.result == 'success' && (needs.test.result == 'success' || needs.test.result == 'skipped') && needs.launch.result == 'success' && !inputs.skip-verification
+    needs: [deploy, test, prepare, launch]
+    if: always() && needs.deploy.result == 'success' && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped') && needs.launch.result == 'success' && !inputs.skip-verification
     steps:
       - name: Define environment variables
         run: |
@@ -351,7 +394,7 @@ jobs:
   cleanup:
     name: "🧹 Cleanup & Finalize"
     runs-on: ubuntu-latest
-    needs: [deploy, test, launch, verify]
+    needs: [deploy, test, prepare, launch, verify]
     if: always()
     steps:
       - name: Define environment variables

@@ -33,6 +33,8 @@ jobs:
       docker-requires: "docker.service"                # Service systemd requis (défaut: docker.service)
       run-on-test: "npm run test:e2e"                  # Commandes de test à exécuter
       skip-tests: false                                # Ignorer la phase de test (défaut: false)
+      run-on-prepare: "npm run migrate"                # Commandes de préparation à exécuter (migrations, backups, etc.)
+      skip-prepare: false                              # Ignorer la phase de préparation (défaut: false)
       health-check-timeout: 60                         # Timeout pour les vérifications en secondes (défaut: 60)
       skip-verification: false                         # Ignorer la vérification du déploiement (défaut: false)
       restore-on-failure: true                         # Restaurer la sauvegarde en cas d'échec (défaut: true)
@@ -180,9 +182,10 @@ Chaque workflow suit cette architecture :
 
 1. **🚀 Deploy** : Upload des fichiers vers le serveur
 2. **🧪 Test** : Exécution des tests (optionnel)
-3. **🚢 Launch** : Lancement des services (Docker uniquement)
-4. **✅ Verify** : Vérification du déploiement
-5. **🧹 Cleanup** : Nettoyage et finalisation
+3. **🔧 Prepare** : Préparation des services - migrations, backups, etc. (optionnel)
+4. **🚢 Launch** : Lancement des services (Docker uniquement)
+5. **✅ Verify** : Vérification du déploiement
+6. **🧹 Cleanup** : Nettoyage et finalisation
 
 ## 📁 Structure des dossiers serveur
 
