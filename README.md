@@ -84,8 +84,6 @@ jobs:
       artifact-name: "temp-files"                      # Nom de l'artefact à télécharger (défaut: project-package)
       exclude-folders: ".git,.github,node_modules"     # Dossiers à exclure lors de l'upload (défaut: .git,.github,node_modules)
       run-on-test: "npm test"                          # Commandes de test à exécuter
-      skip-tests: false                                # Ignorer la phase de test (défaut: false)
-      skip-verification: false                         # Ignorer la vérification du déploiement (défaut: false)
       run-on-success: "echo 'Tests passed'"            # Commandes à exécuter en cas de succès
       run-on-failure: "echo 'Tests failed'"            # Commandes à exécuter en cas d'échec
 ```
