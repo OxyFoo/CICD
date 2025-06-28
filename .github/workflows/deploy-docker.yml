@@ -40,10 +40,11 @@ on:
         required: false
         type: string
         default: "docker.service"
-      run-on-test:
-        description: "Remote command to run during test phase"
+      test-steps:
+        description: "YAML array of test steps with dependencies. Each step should have 'name', 'command', and optionally 'depends_on' properties. Example: see README"
         required: false
         type: string
+        default: ""
       skip-tests:
         description: "Skip the test phase"
         required: false
@@ -162,11 +163,100 @@ jobs:
             ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }}:${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
           echo "Files uploaded to Docker project directory"
 
-  test:
-    name: "🧪 Run Tests"
+  generate-test-phases:
+    name: "📋 Generate Test Phases"
     runs-on: ubuntu-latest
     needs: [deploy]
-    if: inputs.run-on-test && !inputs.skip-tests
+    if: (!inputs.skip-tests && inputs.test-steps != '')
+    outputs:
+      phases: ${{ steps.phases.outputs.phases }}
+      has-tests: ${{ steps.phases.outputs.has-tests }}
+    steps:
+      - name: Parse test steps and generate phases
+        id: phases
+        run: |
+          if [ -z "${{ inputs.test-steps }}" ]; then
+            echo "No tests to run"
+            echo "phases=[]" >> $GITHUB_OUTPUT
+            echo "has-tests=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Install yq for YAML parsing
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+          # Parse YAML and create phases based on dependencies
+          cat << 'EOF' > test_steps.yaml
+          ${{ inputs.test-steps }}
+          EOF
+
+          # Simple approach: create job names dynamically for each phase
+          python3 << 'PYTHON_EOF'
+          import yaml
+          import json
+          import sys
+          from collections import defaultdict
+
+          with open('test_steps.yaml', 'r') as f:
+              tests = yaml.safe_load(f)
+
+          if not tests:
+              print("phases=[]")
+              print("has-tests=false")
+              sys.exit(0)
+
+          # Build dependency graph and determine execution order
+          test_map = {test['name']: test for test in tests}
+          dependencies = {}
+          
+          for test in tests:
+              test_name = test['name']
+              deps = test.get('depends_on', [])
+              dependencies[test_name] = deps
+
+          # Determine phases using topological sort
+          phases = []
+          remaining = set(test['name'] for test in tests)
+          
+          while remaining:
+              # Find tests with no remaining dependencies
+              ready = []
+              for test_name in remaining:
+                  deps = dependencies.get(test_name, [])
+                  if all(dep not in remaining for dep in deps):
+                      ready.append(test_name)
+              
+              if not ready:
+                  print("Error: Circular dependency detected!", file=sys.stderr)
+                  sys.exit(1)
+              
+              # Create phase
+              phase_tests = []
+              for test_name in ready:
+                  test = test_map[test_name]
+                  phase_tests.append({
+                      'name': test['name'],
+                      'command': test['command'],
+                      'safe_name': test['name'].replace(' ', '_').replace('-', '_').lower()
+                  })
+                  remaining.remove(test_name)
+              
+              phases.append(phase_tests)
+
+          print(f"phases={json.dumps(phases)}")
+          print("has-tests=true")
+          PYTHON_EOF
+
+  test-phase-1:
+    name: "🧪 Tests Phase 1"
+    runs-on: ubuntu-latest
+    needs: [generate-test-phases]
+    if: needs.generate-test-phases.outputs.has-tests == 'true' && fromJson(needs.generate-test-phases.outputs.phases)[0]
+    strategy:
+      fail-fast: false
+      matrix:
+        test: ${{ fromJson(needs.generate-test-phases.outputs.phases)[0] }}
     steps:
       - name: Define environment variables
         run: |
@@ -177,30 +267,100 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.DEPLOY_SERVER_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          # Configure SSH port
           SSH_PORT="${{ secrets.DEPLOY_SERVER_PORT }}"
           if [ -z "$SSH_PORT" ]; then
             SSH_PORT="22"
           fi
           ssh-keyscan -H -p $SSH_PORT ${{ secrets.DEPLOY_SERVER_HOST }} >> ~/.ssh/known_hosts
-          # Configure SSH client for custom port
           echo "Host ${{ secrets.DEPLOY_SERVER_HOST }}" >> ~/.ssh/config
           echo "  Port $SSH_PORT" >> ~/.ssh/config
 
-      - name: Run tests
+      - name: Run ${{ matrix.test.name }}
         run: |
-          echo "Running tests on Docker project..."
+          echo "Running ${{ matrix.test.name }}..."
           ssh ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} "
             set -e
             cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
-            ${{ inputs.run-on-test }}
+            ${{ matrix.test.command }}
+          "
+
+  test-phase-2:
+    name: "🧪 Tests Phase 2"
+    runs-on: ubuntu-latest
+    needs: [generate-test-phases, test-phase-1]
+    if: always() && needs.generate-test-phases.outputs.has-tests == 'true' && fromJson(needs.generate-test-phases.outputs.phases)[1] && (needs.test-phase-1.result == 'success' || needs.test-phase-1.result == 'skipped')
+    strategy:
+      fail-fast: false
+      matrix:
+        test: ${{ fromJson(needs.generate-test-phases.outputs.phases)[1] }}
+    steps:
+      - name: Define environment variables
+        run: |
+          echo "PROJECT_NAME_MIN=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SERVER_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          SSH_PORT="${{ secrets.DEPLOY_SERVER_PORT }}"
+          if [ -z "$SSH_PORT" ]; then
+            SSH_PORT="22"
+          fi
+          ssh-keyscan -H -p $SSH_PORT ${{ secrets.DEPLOY_SERVER_HOST }} >> ~/.ssh/known_hosts
+          echo "Host ${{ secrets.DEPLOY_SERVER_HOST }}" >> ~/.ssh/config
+          echo "  Port $SSH_PORT" >> ~/.ssh/config
+
+      - name: Run ${{ matrix.test.name }}
+        run: |
+          echo "Running ${{ matrix.test.name }}..."
+          ssh ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} "
+            set -e
+            cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+            ${{ matrix.test.command }}
+          "
+
+  test-phase-3:
+    name: "🧪 Tests Phase 3"
+    runs-on: ubuntu-latest
+    needs: [generate-test-phases, test-phase-1, test-phase-2]
+    if: always() && needs.generate-test-phases.outputs.has-tests == 'true' && fromJson(needs.generate-test-phases.outputs.phases)[2] && (needs.test-phase-1.result == 'success' || needs.test-phase-1.result == 'skipped') && (needs.test-phase-2.result == 'success' || needs.test-phase-2.result == 'skipped')
+    strategy:
+      fail-fast: false
+      matrix:
+        test: ${{ fromJson(needs.generate-test-phases.outputs.phases)[2] }}
+    steps:
+      - name: Define environment variables
+        run: |
+          echo "PROJECT_NAME_MIN=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SERVER_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          SSH_PORT="${{ secrets.DEPLOY_SERVER_PORT }}"
+          if [ -z "$SSH_PORT" ]; then
+            SSH_PORT="22"
+          fi
+          ssh-keyscan -H -p $SSH_PORT ${{ secrets.DEPLOY_SERVER_HOST }} >> ~/.ssh/known_hosts
+          echo "Host ${{ secrets.DEPLOY_SERVER_HOST }}" >> ~/.ssh/config
+          echo "  Port $SSH_PORT" >> ~/.ssh/config
+
+      - name: Run ${{ matrix.test.name }}
+        run: |
+          echo "Running ${{ matrix.test.name }}..."
+          ssh ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} "
+            set -e
+            cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
+            ${{ matrix.test.command }}
           "
 
   prepare:
     name: "🔧 Prepare Services"
     runs-on: ubuntu-latest
-    needs: [deploy, test]
-    if: inputs.run-on-prepare && !inputs.skip-prepare && always() && needs.deploy.result == 'success' && (needs.test.result == 'success' || needs.test.result == 'skipped')
+    needs: [deploy, generate-test-phases, test-phase-1, test-phase-2, test-phase-3]
+    if: inputs.run-on-prepare && !inputs.skip-prepare && always() && needs.deploy.result == 'success' && (needs.generate-test-phases.outputs.has-tests == 'false' || (needs.test-phase-1.result == 'success' || needs.test-phase-1.result == 'skipped') && (needs.test-phase-2.result == 'success' || needs.test-phase-2.result == 'skipped') && (needs.test-phase-3.result == 'success' || needs.test-phase-3.result == 'skipped'))
     steps:
       - name: Define environment variables
         run: |
@@ -233,8 +393,8 @@ jobs:
   launch:
     name: "🚢 Launch Services"
     runs-on: ubuntu-latest
-    needs: [deploy, test, prepare]
-    if: always() && needs.deploy.result == 'success' && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')
+    needs: [deploy, generate-test-phases, test-phase-1, test-phase-2, test-phase-3, prepare]
+    if: always() && needs.deploy.result == 'success' && (needs.generate-test-phases.outputs.has-tests == 'false' || (needs.test-phase-1.result == 'success' || needs.test-phase-1.result == 'skipped') && (needs.test-phase-2.result == 'success' || needs.test-phase-2.result == 'skipped') && (needs.test-phase-3.result == 'success' || needs.test-phase-3.result == 'skipped')) && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')
     steps:
       - name: Define environment variables
         run: |
@@ -319,8 +479,8 @@ jobs:
   verify:
     name: "✅ Verify Deployment"
     runs-on: ubuntu-latest
-    needs: [deploy, test, prepare, launch]
-    if: always() && needs.deploy.result == 'success' && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped') && needs.launch.result == 'success' && !inputs.skip-verification
+    needs: [deploy, generate-test-phases, test-phase-1, test-phase-2, test-phase-3, prepare, launch]
+    if: always() && needs.deploy.result == 'success' && (needs.generate-test-phases.outputs.has-tests == 'false' || (needs.test-phase-1.result == 'success' || needs.test-phase-1.result == 'skipped') && (needs.test-phase-2.result == 'success' || needs.test-phase-2.result == 'skipped') && (needs.test-phase-3.result == 'success' || needs.test-phase-3.result == 'skipped')) && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped') && needs.launch.result == 'success' && !inputs.skip-verification
     steps:
       - name: Define environment variables
         run: |
@@ -394,7 +554,7 @@ jobs:
   cleanup:
     name: "🧹 Cleanup & Finalize"
     runs-on: ubuntu-latest
-    needs: [deploy, test, prepare, launch, verify]
+    needs: [deploy, generate-test-phases, test-phase-1, test-phase-2, test-phase-3, prepare, launch, verify]
     if: always()
     steps:
       - name: Define environment variables
