@@ -132,6 +132,7 @@ jobs:
               echo 'Creating backup of existing project...'
               rm -rf ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP
               cp -r ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP
+              rm -rf ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
               echo 'Backup created successfully'
             else
               echo 'No existing project found, skipping backup'
@@ -458,7 +459,7 @@ jobs:
           echo "  Port $SSH_PORT" >> ~/.ssh/config
 
       - name: Restore on failure
-        if: failure() && inputs.restore-on-failure
+        if: inputs.restore-on-failure && (needs.deploy.result == 'failure' || needs.setup.result == 'failure' || needs.test.result == 'failure' || needs.launch.result == 'failure' || needs.verify.result == 'failure')
         run: |
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
             if [ -d ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP ]; then
