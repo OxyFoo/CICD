@@ -195,9 +195,9 @@ jobs:
           ${{ inputs.setup-steps }}
           EOF
             
-            # Execute setup commands as bash script
+            # Execute setup commands script
             chmod +x run_setup.sh
-            bash run_setup.sh
+            $(ps -p $$ -o comm=) run_setup.sh
             
             rm -f run_setup.sh
           "
@@ -248,7 +248,7 @@ jobs:
           ssh -T -p "$SSH_PORT" ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
             set -e
             cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
-            bash /tmp/run_tests.sh
+            $(ps -p $$ -o comm=) /tmp/run_tests.sh
             rm -f /tmp/run_tests.sh
           "
 
