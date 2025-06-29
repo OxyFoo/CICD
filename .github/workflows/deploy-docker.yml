@@ -195,26 +195,9 @@ jobs:
           ${{ inputs.setup-steps }}
           EOF
             
-            # Execute setup commands
-            if grep -q '^#!/bin/bash' run_setup.sh; then
-              # Bash script - execute as a complete script
-              chmod +x run_setup.sh
-              ./run_setup.sh
-            elif grep -q '^-' run_setup.sh; then
-              # YAML format - extract commands
-              grep '^ *command:' run_setup.sh | sed 's/^ *command: *//' | while read cmd; do
-                echo \"Running: \$cmd\"
-                \$cmd
-              done
-            else
-              # Simple format - run each line
-              while IFS= read -r cmd || [ -n \"\$cmd\" ]; do
-                if [ -n \"\$cmd\" ] && [[ ! \"\$cmd\" =~ ^[[:space:]]*# ]]; then
-                  echo \"Running: \$cmd\"
-                  \$cmd
-                fi
-              done < run_setup.sh
-            fi
+            # Execute setup commands as bash script
+            chmod +x run_setup.sh
+            bash run_setup.sh
             
             rm -f run_setup.sh
           "
@@ -254,26 +237,9 @@ jobs:
           ${{ inputs.test-steps }}
           EOF
             
-            # Execute tests
-            if grep -q '^#!/bin/bash' run_tests.sh; then
-              # Bash script - execute as a complete script
-              chmod +x run_tests.sh
-              ./run_tests.sh
-            elif grep -q '^-' run_tests.sh; then
-              # YAML format - extract commands
-              grep '^ *command:' run_tests.sh | sed 's/^ *command: *//' | while read cmd; do
-                echo \"Running: \$cmd\"
-                \$cmd
-              done
-            else
-              # Simple format - run each line
-              while IFS= read -r cmd || [ -n \"\$cmd\" ]; do
-                if [ -n \"\$cmd\" ] && [[ ! \"\$cmd\" =~ ^[[:space:]]*# ]]; then
-                  echo \"Running: \$cmd\"
-                  \$cmd
-                fi
-              done < run_tests.sh
-            fi
+            # Execute tests as bash script
+            chmod +x run_tests.sh
+            bash run_tests.sh
             
             rm -f run_tests.sh
           "
