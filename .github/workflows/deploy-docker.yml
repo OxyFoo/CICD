@@ -226,22 +226,30 @@ jobs:
           echo "  Port $SSH_PORT" >> ~/.ssh/config
 
       - name: Run tests
+        env:
+          TEST_STEPS: ${{ inputs.test-steps }}
         run: |
           echo "Running tests..."
-          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
+
+          # 1. We write the script locally
+          printf '%s\n' "$TEST_STEPS" > run_tests.sh   # aucune $(…) exécutée
+          chmod +x run_tests.sh
+
+          # 2. We send it to the server
+          SSH_PORT="${{ secrets.VPS_PORT }}"
+          if [ -z "$SSH_PORT" ]; then
+            SSH_PORT="22"
+          fi
+
+          scp -P "$SSH_PORT" run_tests.sh \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/run_tests.sh
+
+          # 3. We execute it then we clean
+          ssh -T -p "$SSH_PORT" ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
             set -e
             cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
-            
-            # Parse and run test commands
-            cat << 'EOF' > run_tests.sh
-          ${{ inputs.test-steps }}
-          EOF
-            
-            # Execute tests as bash script
-            chmod +x run_tests.sh
-            bash run_tests.sh
-            
-            rm -f run_tests.sh
+            bash /tmp/run_tests.sh
+            rm -f /tmp/run_tests.sh
           "
 
   launch:
