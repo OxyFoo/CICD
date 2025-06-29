@@ -235,21 +235,25 @@ jobs:
           printf '%s\n' "$TEST_STEPS" > run_tests.sh   # aucune $(…) exécutée
           chmod +x run_tests.sh
 
-          # 2. We send it to the server
+          # 2. We send it to the server (using home directory instead of /tmp, to avoid issues with permissions)
           SSH_PORT="${{ secrets.VPS_PORT }}"
           if [ -z "$SSH_PORT" ]; then
             SSH_PORT="22"
           fi
 
+          # Create a unique filename to avoid conflicts
+          SCRIPT_NAME="run_tests_$(date +%s).sh"
+
           scp -P "$SSH_PORT" run_tests.sh \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/run_tests.sh
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:~/"$SCRIPT_NAME"
 
           # 3. We execute it then we clean
           ssh -T -p "$SSH_PORT" ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
             set -e
             cd ${{ env.PROJECT_PATH }}/$PROJECT_NAME_MIN
-            $(ps -p $$ -o comm=) /tmp/run_tests.sh
-            rm -f /tmp/run_tests.sh
+            chmod +x ~/$SCRIPT_NAME
+            $(ps -p $$ -o comm=) ~/$SCRIPT_NAME
+            rm -f ~/$SCRIPT_NAME
           "
 
   launch:
