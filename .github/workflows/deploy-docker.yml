@@ -338,7 +338,7 @@ jobs:
           # Start the service
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
             sudo oxy -u
-            sudo systemctl start ${SERVICE_NAME}
+            sudo systemctl restart ${SERVICE_NAME}
           "
           echo "Docker service launched successfully"
 
@@ -353,6 +353,7 @@ jobs:
           echo "PROJECT_NAME_MIN=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
           echo "PROJECT_FULL_NAME=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT_MIN }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
           echo "SERVICE_NAME=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT_MIN }}.service' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "PROJECT_BACKUP=$(echo '${{ inputs.author }}-${{ env.PROJECT_NAME }}.bak' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
       - name: Setup SSH
         run: |
@@ -389,7 +390,7 @@ jobs:
                   echo 'Service and container are running successfully!'
                   
                   # Cleanup backup
-                  if [ -d ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP ]; then
+                  if [ ! -z \"$PROJECT_BACKUP\" ] && [ -d ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP ]; then
                     rm -rf ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP
                     echo 'Backup cleaned up.'
                   fi
@@ -448,7 +449,7 @@ jobs:
         if: inputs.restore-on-failure && (needs.deploy.result == 'failure' || needs.setup.result == 'failure' || needs.test.result == 'failure' || needs.launch.result == 'failure' || needs.verify.result == 'failure')
         run: |
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
-            if [ -d ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP ]; then
+            if [ ! -z \"$PROJECT_BACKUP\" ] && [ -d ${{ env.PROJECT_PATH }}/$PROJECT_BACKUP ]; then
               echo 'Restoring from backup due to deployment failure...'
               
               # Stop failed service
