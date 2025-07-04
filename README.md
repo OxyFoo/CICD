@@ -22,7 +22,7 @@ Déploie une application Docker avec Docker Compose.
 ```yaml
 jobs:
   deploy:
-    uses: ./.github/workflows/deploy-docker.yml
+    uses: OxyFoo/CICD/.github/workflows/deploy-docker.yml@v2
     secrets: inherit
     with:
       author: "mycompany"                              # REQUIS - Nom de l'auteur (minuscules)
@@ -61,7 +61,7 @@ Déploie un site web statique directement sur le serveur web.
 ```yaml
 jobs:
   deploy:
-    uses: ./.github/workflows/deploy-webstatic.yml
+    uses: OxyFoo/CICD/.github/workflows/deploy-webstatic.yml@v2
     secrets: inherit
     with:
       author: "mycompany"                              # REQUIS - Nom de l'auteur (minuscules)
@@ -87,7 +87,7 @@ Déploie des fichiers temporaires, supprimés automatiquement après le workflow
 ```yaml
 jobs:
   deploy:
-    uses: ./.github/workflows/deploy-temporary.yml
+    uses: OxyFoo/CICD/.github/workflows/deploy-temporary.yml@v2
     secrets: inherit
     with:
       author: "mycompany"                              # REQUIS - Nom de l'auteur (minuscules)
@@ -168,7 +168,7 @@ jobs:
 
   deploy:
     needs: build
-    uses: ./.github/workflows/deploy-docker.yml
+    uses: OxyFoo/CICD/.github/workflows/deploy-docker.yml@v2
     with:
       author: "mycompany"
       environment: "production"
