@@ -71,8 +71,8 @@ jobs:
       exclude-folders: ".git,.github,node_modules"     # Dossiers à exclure lors de l'upload (défaut: .git,.github,node_modules)
       health-check-url: "https://example.com/myapp"    # URL pour vérifier la disponibilité du site
       health-check-timeout: 60                         # Timeout pour les vérifications en secondes (défaut: 60)
-      run-on-test: "npm run test:e2e"                  # Commandes de test à exécuter
-      skip-tests: false                                # Ignorer la phase de test (défaut: false)
+      run-on-post-deploy: "npm run setup"              # Commandes à exécuter après le déploiement (tests, setup, etc.)
+      skip-post-deploy: false                          # Ignorer la phase post-déploiement (défaut: false)
       skip-verification: false                         # Ignorer la vérification du déploiement (défaut: false)
       run-on-success: "echo 'Website deployed'"        # Commandes à exécuter en cas de succès
       run-on-failure: "echo 'Deployment failed'"       # Commandes à exécuter en cas d'échec
@@ -189,7 +189,7 @@ jobs:
 Chaque workflow suit cette architecture :
 
 1. **🚀 Deploy** : Upload des fichiers vers le serveur
-2. **🧪 Test** : Exécution des tests (optionnel)
+2. **⚙️ Post-Deploy** : Configuration, tests et vérifications après déploiement (optionnel)
 3. **🔧 Prepare** : Préparation des services - migrations, backups, etc. (optionnel)
 4. **🚢 Launch** : Lancement des services (Docker uniquement)
 5. **✅ Verify** : Vérification du déploiement
