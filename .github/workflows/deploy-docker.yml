@@ -78,6 +78,11 @@ on:
         description: "Remote command to run on failure"
         required: false
         type: string
+      secret-files:
+        description: "Map of secret names to file paths (e.g., 'ENV_FILE_BASE64: .env, NPMRC_FILE_BASE64: .npmrc')"
+        required: false
+        type: string
+        default: ""
     secrets:
       VPS_SSH_PRIVATE_KEY:
         description: "SSH private key for server"
@@ -144,6 +149,52 @@ jobs:
         with:
           name: ${{ inputs.artifact-name }}
           path: .
+
+      - name: Create files from secrets
+        if: inputs.secret-files != ''
+        env:
+          SECRET_FILES_MAP: ${{ inputs.secret-files }}
+          # Pass all potential secrets as environment variables
+          ALL_SECRETS: ${{ toJSON(secrets) }}
+        run: |
+          echo "Processing secret files..."
+          
+          # Create a temporary script to handle secrets dynamically
+          cat << 'SCRIPT_EOF' > process_secrets.sh
+          #!/bin/bash
+          
+          # Parse the ALL_SECRETS JSON to extract secret values
+          get_secret_value() {
+            local secret_name="$1"
+            echo "$ALL_SECRETS" | jq -r --arg name "$secret_name" '.[$name] // empty'
+          }
+          
+          # Parse the secret-files input (format: "SECRET_NAME: file_path, SECRET_NAME2: file_path2")
+          echo "$SECRET_FILES_MAP" | tr ',' '\n' | while IFS=':' read -r secret_name file_path; do
+            # Trim whitespace
+            secret_name=$(echo "$secret_name" | xargs)
+            file_path=$(echo "$file_path" | xargs)
+            
+            if [ -n "$secret_name" ] && [ -n "$file_path" ]; then
+              echo "Processing secret: $secret_name -> $file_path"
+              
+              secret_value=$(get_secret_value "$secret_name")
+              if [ -n "$secret_value" ] && [ "$secret_value" != "null" ]; then
+                echo "$secret_value" | base64 -d > "$file_path"
+                echo "✓ Created $file_path from $secret_name"
+              else
+                echo "⚠ Secret $secret_name not found or empty, skipping $file_path"
+              fi
+            fi
+          done
+          SCRIPT_EOF
+          
+          # Make script executable and run it
+          chmod +x process_secrets.sh
+          ./process_secrets.sh
+          
+          # Clean up
+          rm -f process_secrets.sh
 
       - name: Upload files to server
         run: |
