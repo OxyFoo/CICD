@@ -79,7 +79,7 @@ on:
         required: false
         type: string
       secret-files:
-        description: "Map of secret names to file paths (e.g., 'ENV_FILE_BASE64: .env, NPMRC_FILE_BASE64: .npmrc')"
+        description: "Map of secret names to file paths (e.g., 'ENV_FILE_BASE64: .env, API_KEY: .apikey'). Secrets ending with _BASE64 or _B64 are automatically base64 decoded."
         required: false
         type: string
         default: ""
@@ -158,41 +158,47 @@ jobs:
           ALL_SECRETS: ${{ toJSON(secrets) }}
         run: |
           echo "Processing secret files..."
-          
+
           # Create a temporary script to handle secrets dynamically
           cat << 'SCRIPT_EOF' > process_secrets.sh
           #!/bin/bash
-          
+
           # Parse the ALL_SECRETS JSON to extract secret values
           get_secret_value() {
             local secret_name="$1"
             echo "$ALL_SECRETS" | jq -r --arg name "$secret_name" '.[$name] // empty'
           }
-          
+
           # Parse the secret-files input (format: "SECRET_NAME: file_path, SECRET_NAME2: file_path2")
           echo "$SECRET_FILES_MAP" | tr ',' '\n' | while IFS=':' read -r secret_name file_path; do
             # Trim whitespace
             secret_name=$(echo "$secret_name" | xargs)
             file_path=$(echo "$file_path" | xargs)
-            
+
             if [ -n "$secret_name" ] && [ -n "$file_path" ]; then
               echo "Processing secret: $secret_name -> $file_path"
-              
+
               secret_value=$(get_secret_value "$secret_name")
               if [ -n "$secret_value" ] && [ "$secret_value" != "null" ]; then
-                echo "$secret_value" | base64 -d > "$file_path"
-                echo "✓ Created $file_path from $secret_name"
+                # Check if secret name ends with _BASE64 or _B64 to determine if we need to decode
+                if [[ "$secret_name" =~ _BASE64$ ]] || [[ "$secret_name" =~ _B64$ ]]; then
+                  echo "$secret_value" | base64 -d > "$file_path"
+                  echo "✓ Created $file_path from $secret_name (base64 decoded)"
+                else
+                  echo "$secret_value" > "$file_path"
+                  echo "✓ Created $file_path from $secret_name (raw content)"
+                fi
               else
                 echo "⚠ Secret $secret_name not found or empty, skipping $file_path"
               fi
             fi
           done
           SCRIPT_EOF
-          
+
           # Make script executable and run it
           chmod +x process_secrets.sh
           ./process_secrets.sh
-          
+
           # Clean up
           rm -f process_secrets.sh
 
