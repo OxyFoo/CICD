@@ -125,7 +125,7 @@ jobs:
           if [ -z "$SSH_PORT" ]; then
             SSH_PORT="22"
           fi
-          ssh-keyscan -T 30 -H -p $SSH_PORT ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -4 -T 30 -H -p $SSH_PORT ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
           # Configure SSH client for custom port
           echo "Host ${{ secrets.VPS_HOST }}" >> ~/.ssh/config
           echo "  Port $SSH_PORT" >> ~/.ssh/config
@@ -236,7 +236,7 @@ jobs:
           if [ -z "$SSH_PORT" ]; then
             SSH_PORT="22"
           fi
-          ssh-keyscan -T 30 -H -p $SSH_PORT ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -4 -T 30 -H -p $SSH_PORT ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
           echo "Host ${{ secrets.VPS_HOST }}" >> ~/.ssh/config
           echo "  Port $SSH_PORT" >> ~/.ssh/config
 
@@ -278,7 +278,7 @@ jobs:
           if [ -z "$SSH_PORT" ]; then
             SSH_PORT="22"
           fi
-          ssh-keyscan -T 30 -H -p $SSH_PORT ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -4 -T 30 -H -p $SSH_PORT ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
           echo "Host ${{ secrets.VPS_HOST }}" >> ~/.ssh/config
           echo "  Port $SSH_PORT" >> ~/.ssh/config
 
@@ -335,7 +335,7 @@ jobs:
           if [ -z "$SSH_PORT" ]; then
             SSH_PORT="22"
           fi
-          ssh-keyscan -T 30 -H -p $SSH_PORT ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -4 -T 30 -H -p $SSH_PORT ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
           # Configure SSH client for custom port
           echo "Host ${{ secrets.VPS_HOST }}" >> ~/.ssh/config
           echo "  Port $SSH_PORT" >> ~/.ssh/config
@@ -422,7 +422,7 @@ jobs:
           if [ -z "$SSH_PORT" ]; then
             SSH_PORT="22"
           fi
-          ssh-keyscan -T 30 -H -p $SSH_PORT ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -4 -T 30 -H -p $SSH_PORT ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
           # Configure SSH client for custom port
           echo "Host ${{ secrets.VPS_HOST }}" >> ~/.ssh/config
           echo "  Port $SSH_PORT" >> ~/.ssh/config
@@ -497,7 +497,7 @@ jobs:
           if [ -z "$SSH_PORT" ]; then
             SSH_PORT="22"
           fi
-          ssh-keyscan -T 30 -H -p $SSH_PORT ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -4 -T 30 -H -p $SSH_PORT ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
           # Configure SSH client for custom port
           echo "Host ${{ secrets.VPS_HOST }}" >> ~/.ssh/config
           echo "  Port $SSH_PORT" >> ~/.ssh/config
