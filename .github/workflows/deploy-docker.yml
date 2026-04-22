@@ -120,12 +120,16 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.VPS_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+
+          printf '%s\n' "${{ secrets.VPS2_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
           # Configure SSH port
           SSH_PORT="${{ secrets.VPS_PORT }}"
           if [ -z "$SSH_PORT" ]; then
             SSH_PORT="22"
           fi
-          ssh-keyscan -4 -T 30 -H -p $SSH_PORT ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+
           # Configure SSH client for custom port
           echo "Host ${{ secrets.VPS_HOST }}" >> ~/.ssh/config
           echo "  Port $SSH_PORT" >> ~/.ssh/config
@@ -232,11 +236,15 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.VPS_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+
+          printf '%s\n' "${{ secrets.VPS2_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
           SSH_PORT="${{ secrets.VPS_PORT }}"
           if [ -z "$SSH_PORT" ]; then
             SSH_PORT="22"
           fi
-          ssh-keyscan -4 -T 30 -H -p $SSH_PORT ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+
           echo "Host ${{ secrets.VPS_HOST }}" >> ~/.ssh/config
           echo "  Port $SSH_PORT" >> ~/.ssh/config
 
@@ -274,11 +282,15 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.VPS_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+
+          printf '%s\n' "${{ secrets.VPS2_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
           SSH_PORT="${{ secrets.VPS_PORT }}"
           if [ -z "$SSH_PORT" ]; then
             SSH_PORT="22"
           fi
-          ssh-keyscan -4 -T 30 -H -p $SSH_PORT ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+
           echo "Host ${{ secrets.VPS_HOST }}" >> ~/.ssh/config
           echo "  Port $SSH_PORT" >> ~/.ssh/config
 
@@ -330,12 +342,16 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.VPS_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+
+          printf '%s\n' "${{ secrets.VPS2_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
           # Configure SSH port
           SSH_PORT="${{ secrets.VPS_PORT }}"
           if [ -z "$SSH_PORT" ]; then
             SSH_PORT="22"
           fi
-          ssh-keyscan -4 -T 30 -H -p $SSH_PORT ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+
           # Configure SSH client for custom port
           echo "Host ${{ secrets.VPS_HOST }}" >> ~/.ssh/config
           echo "  Port $SSH_PORT" >> ~/.ssh/config
@@ -417,12 +433,16 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.VPS_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+
+          printf '%s\n' "${{ secrets.VPS2_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
           # Configure SSH port
           SSH_PORT="${{ secrets.VPS_PORT }}"
           if [ -z "$SSH_PORT" ]; then
             SSH_PORT="22"
           fi
-          ssh-keyscan -4 -T 30 -H -p $SSH_PORT ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+
           # Configure SSH client for custom port
           echo "Host ${{ secrets.VPS_HOST }}" >> ~/.ssh/config
           echo "  Port $SSH_PORT" >> ~/.ssh/config
@@ -492,12 +512,16 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.VPS_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+
+          printf '%s\n' "${{ secrets.VPS2_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
           # Configure SSH port
           SSH_PORT="${{ secrets.VPS_PORT }}"
           if [ -z "$SSH_PORT" ]; then
             SSH_PORT="22"
           fi
-          ssh-keyscan -4 -T 30 -H -p $SSH_PORT ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+
           # Configure SSH client for custom port
           echo "Host ${{ secrets.VPS_HOST }}" >> ~/.ssh/config
           echo "  Port $SSH_PORT" >> ~/.ssh/config
